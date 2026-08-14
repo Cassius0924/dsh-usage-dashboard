@@ -6,9 +6,9 @@
  * sidebar collapse) instead of stranding itself at stale pixel coordinates.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
-import { fetchBalance, getCachedBalance } from './api.ts'
+import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt, subscribeUsage } from './api.ts'
 import { fmt } from './charts.tsx'
-import type { BalanceData } from '../contract.ts'
+import type { BalanceData, UsageData } from '../contract.ts'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
 import { getWidgetVisible, subscribeWidgetVisible } from './store.ts'
 
@@ -113,6 +113,16 @@ export function QuotaWidget(): ReactElement | null {
   const [dragging, setDragging] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<DragSession | null>(null)
+
+  // Today's spend comes from the shared usage cache — never fetched on the
+  // widget's own poll, since aggregating the session logs takes seconds. A
+  // manual refresh (below) is the one place the widget pays for it.
+  const readUsage = (): { data: UsageData | null; at: number | null } => {
+    const cached = getCachedUsage()
+    return { data: cached?.ok === true ? cached.data ?? null : null, at: getCachedUsageAt() }
+  }
+  const [usage, setUsage] = useState(readUsage)
+  useEffect(() => subscribeUsage(() => setUsage(readUsage())), [])
 
   const load = async (showLoading: boolean, force = false): Promise<void> => {
     if (showLoading) setLoading(true)
@@ -284,6 +294,11 @@ export function QuotaWidget(): ReactElement | null {
     ? (data?.isAvailable === false ? 'dsh-quota-dot dsh-quota-dot--error' : 'dsh-quota-dot')
     : 'dsh-quota-dot dsh-quota-dot--idle'
 
+  // The usage figure can be minutes old (it is only refreshed on demand), so
+  // say how old rather than presenting it as live.
+  const ageMinutes = usage.at === null ? null : Math.floor((Date.now() - usage.at) / 60_000)
+  const usageAgeText = ageMinutes === null || ageMinutes < 1 ? '刚刚更新' : `${ageMinutes} 分钟前的数据，点 ↻ 更新`
+
   let body: ReactElement | null = null
   if (!collapsed) {
     if (loading && data === null && error === null) {
@@ -298,6 +313,12 @@ export function QuotaWidget(): ReactElement | null {
             <span className="dsh-quota-total">{fmt(primary.total)}</span>
             <span className="dsh-quota-currency">{primary.currency}</span>
           </div>
+          {usage.data !== null && (
+            <div className="dsh-quota-row" title={`今日消耗（估算）· ${usageAgeText}`}>
+              <span className="dsh-quota-label">今日消耗</span>
+              <span className="dsh-quota-value">¥ {fmt(usage.data.summary.today.cost)}</span>
+            </div>
+          )}
           {data?.isAvailable === false && (
             <div className="dsh-quota-row">
               <span className="dsh-quota-label">状态</span>
@@ -337,7 +358,19 @@ export function QuotaWidget(): ReactElement | null {
             )}
           </div>
           <div className="dsh-quota-actions">
-            <button className="dsh-quota-btn" type="button" title="刷新" onClick={() => { void load(true, true) }}>↻</button>
+            <button
+              className="dsh-quota-btn"
+              type="button"
+              title="刷新余额与今日用量"
+              aria-label="刷新余额与今日用量"
+              disabled={loading}
+              onClick={() => {
+                void load(true, true)
+                void fetchUsage(true)
+              }}
+            >
+              ↻
+            </button>
             <button
               className="dsh-quota-btn"
               type="button"

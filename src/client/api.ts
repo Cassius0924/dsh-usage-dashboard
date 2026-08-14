@@ -26,6 +26,24 @@ const usageCache = createCache<UsageResponse>(USAGE_TTL_MS, 'dsh-usage-dashboard
 /** Last cached value (possibly stale), for an instant first render. */
 export const getCachedBalance = (): BalanceResponse | null => balanceCache.get()?.data ?? null
 export const getCachedUsage = (): UsageResponse | null => usageCache.get()?.data ?? null
+/** When the cached usage was fetched, so a consumer can say how old it is. */
+export const getCachedUsageAt = (): number | null => usageCache.get()?.at ?? null
+
+/**
+ * Notified whenever usage is (re)fetched. The floating widget reads usage
+ * straight from this cache rather than fetching on its own: aggregating every
+ * session log takes seconds, and a background widget must not pay that
+ * repeatedly. It subscribes here so it still updates when the dashboard — or
+ * its own refresh button — brings fresh data in.
+ */
+const usageListeners = new Set<() => void>()
+
+export const subscribeUsage = (fn: () => void): (() => void) => {
+  usageListeners.add(fn)
+  return () => {
+    usageListeners.delete(fn)
+  }
+}
 
 export async function fetchBalance(force = false): Promise<BalanceResponse> {
   if (!force) {
@@ -45,6 +63,9 @@ export async function fetchUsage(force = false): Promise<UsageResponse> {
   }
   const suffix = force ? '?refresh=1' : ''
   const res = await getJson<UsageResponse>(`/api/dsh-usage-dashboard/usage${suffix}`, force ? 'no-store' : 'default')
-  if (res.ok) usageCache.put(res)
+  if (res.ok) {
+    usageCache.put(res)
+    for (const listener of [...usageListeners]) listener()
+  }
   return res
 }
