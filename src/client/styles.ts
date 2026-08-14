@@ -32,6 +32,7 @@ export const css = `
 .dq-stat-value{font-size:18px;font-weight:650;color:var(--dsw-alias-label-primary,#1f2328);font-variant-numeric:tabular-nums}
 .dq-stat-value--ok{color:var(--dsw-alias-state-success-primary,#2da44e)}
 .dq-stat-value--bad{color:var(--dsw-alias-state-error-primary,#cf222e)}
+.dq-runway{cursor:help;text-decoration:underline dotted var(--dsw-alias-border-l2,rgba(0,0,0,.25));text-underline-offset:4px}
 .dq-remaining{position:relative;cursor:help}
 .dq-remaining-breakdown{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;flex-direction:column;gap:4px;padding:8px 10px;background:var(--dsw-alias-bg-overlay,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);white-space:nowrap;font-size:12px;font-weight:500;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-remaining:hover .dq-remaining-breakdown{display:flex}

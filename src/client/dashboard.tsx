@@ -392,6 +392,21 @@ export function BalanceDashboard(): ReactElement {
 
   const primary = balance !== null && balance.balances.length > 0 ? balance.balances[0] : null
 
+  // Runway: balance divided by the last 7 calendar days' average spend. Idle
+  // days are included on purpose — that is the burn rate, not the busy-day rate.
+  const recentDays = (usage?.daily ?? []).slice(-7)
+  const avgDailyCost = recentDays.length > 0
+    ? recentDays.reduce((sum, d) => sum + d.cost, 0) / recentDays.length
+    : 0
+  const balanceValue = primary !== null ? Number(primary.total) : Number.NaN
+  const daysLeft = avgDailyCost > 0 && Number.isFinite(balanceValue) ? balanceValue / avgDailyCost : null
+  const daysLeftText = daysLeft === null
+    ? '—'
+    : daysLeft >= 365 ? '> 365 天' : `${daysLeft < 10 ? daysLeft.toFixed(1) : Math.round(daysLeft)} 天`
+  const runwayTitle = daysLeft === null
+    ? `近 ${recentDays.length || 7} 天没有用量，无法估算`
+    : `按近 ${recentDays.length} 天日均 ¥${fmt(avgDailyCost)} 估算（含无用量的日子；今天尚未过完）`
+
   const dailyBars = (usage?.daily ?? []).map(d => ({
     label: d.date.slice(8, 10),
     value: d.total,
@@ -478,6 +493,15 @@ export function BalanceDashboard(): ReactElement {
                   <span>充值额度 {fmt(primary.toppedUp)}</span>
                   <span className="dq-remaining-granted">赠送额度 {fmt(primary.granted)}</span>
                 </div>
+              </div>
+            </div>
+            <div className="dq-stat">
+              <div className="dq-stat-label">预计可用</div>
+              <div
+                className={`dq-stat-value dq-runway${daysLeft !== null && daysLeft < 3 ? ' dq-stat-value--bad' : ''}`}
+                title={runwayTitle}
+              >
+                {daysLeftText}
               </div>
             </div>
             <Stat label="状态">
