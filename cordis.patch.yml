@@ -1,0 +1,10 @@
+# dsh-usage-dashboard bundle layer.
+#
+# One row carries both halves:
+#   - the host plugin resolves from this package's main export (`lib/index.js`),
+#   - the client half rides the same row: dsh's client-modules scans the
+#     Loader entries for packages declaring `dsh.client` (package.json) and
+#     serves their `./client` bundle into the web boot graph.
+- insert:
+    - id: dsh-usage-dashboard
+      name: dsh-usage-dashboard

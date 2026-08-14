@@ -1,6 +1,6 @@
 # dsh-usage-dashboard
 
-一个给 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）Web GUI 用的额度与用量仪表盘插件，以**动态 Cordis 插件**的形式运行。
+一个给 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）Web GUI 用的额度与用量仪表盘插件，以 **DSH 插件包（bundle）** 的形式安装。
 
 它把 DeepSeek 账户余额和 DSH 里的 token 用量汇总到一起，做成两个界面：
 
@@ -31,40 +31,70 @@
 | --- | --- |
 | 账户余额 | DeepSeek API `GET /user/balance`（通过 `credentials` 服务读取 `DEEPSEEK_API_KEY`） |
 | token 用量 | 遍历 DSH 会话日志（`sessionPersistence`），聚合每个 `assistant/message` 事件的 `usage` |
-| 消耗费用 | 按 deepseek-v4-pro 单价估算 |
+| 消耗费用 | 按 deepseek-v4-pro 单价估算（见 `src/usage.ts` 里的 `PRICE_*_PER_M` 常量） |
 
-Host 侧注册了两个 Package 私有 RPC 处理器：
-
-- `deepseek-balance` —— 返回当前余额。
-- `deepseek-usage` —— 返回逐天/逐小时/热力图聚合结果与费用估算。
-
-Client 侧通过 `host.call(...)` 调用它们，并渲染 UI（纯 `React.createElement`，无 JSX/打包器）。
+Host 半注册了自己的带信任校验的 JSON API（`/api/dsh-usage-dashboard/balance`、`/api/dsh-usage-dashboard/usage`），Client 半用同源 `fetch` 调用它并渲染 UI。
 
 ## 安装 / 使用
 
-这是**动态 Cordis 插件**，通过 DSH Web GUI 的 Cordis 插件工具加载，进程内有效（重启后需重新加载）。
+这是标准 DSH 插件包（bundle + client 双面包），通过 `dsh plugin` 安装：
 
-1. 打开 DSH Web GUI，用 `cordis_define` 定义插件，`code.host` 填 `host.js` 的内容，`code.client` 填 `client.js` 的内容（这两个文件是 `cordis_define` 要求的「函数体」格式，直接以 `return { ... }` 开头）。
-2. 用 `cordis_run` 激活。
-3. 首次加载会请求授权，在页面上的 Run 卡片里允许即可。
+```sh
+# 本地 checkout 安装
+dsh plugin --profile web add ./path/to/dsh-usage-dashboard
 
-前提：已配置 `DEEPSEEK_API_KEY`（在「设置 → 模型」里填写，或放在 `$DSH_HOME/.credentials.yaml`）。
+# 或从 GitHub 安装（git 依赖会执行 prepare 脚本构建）
+dsh plugin --profile web add github:Cassius0924/dsh-usage-dashboard
+```
+
+然后**重启 dsh**（`dsh --profile web`）生效。
+
+- 前提：已配置 `DEEPSEEK_API_KEY`（在「设置 → 模型」里填写，或放在 `$DSH_HOME/.credentials.yaml`）。
+- 前提：本机需要 pnpm（`dsh plugin` 是 pnpm 的转发器）。
+
+## 开发 / 构建
+
+```sh
+pnpm install    # 安装 devDependencies
+pnpm run build  # esbuild 构建 lib/index.js（host）+ lib/client.js（client bundle），再 tsc 出类型
+pnpm run typecheck
+```
+
+产物：
+
+- `lib/index.js` —— Host 半（ESM，Node），注册 `/api/dsh-usage-dashboard/*` 路由。
+- `lib/client.js` —— Client 半（CJS 闭包），通过 `window.__ModuleLoader__` 注册进 web 启动图。
 
 ## 文件结构
 
 ```
 dsh-usage-dashboard/
-├── README.md
-├── LICENSE
-├── host.js      # Host 半：余额 + 用量聚合（cordis_define 的 code.host）
-└── client.js    # Client 半：悬浮窗 + 仪表盘 UI（cordis_define 的 code.client）
+├── package.json         # dsh.bundle + dsh.client 声明
+├── cordis.patch.yml     # bundle 层（一行 insert）
+├── build.mjs            # esbuild 构建脚本
+├── tsconfig.json
+├── src/
+│   ├── index.ts         # Host 半入口（webServer 路由）
+│   ├── usage.ts         # 余额 + 用量聚合
+│   ├── trust-fence.ts   # 浏览器信任校验
+│   ├── wire.ts          # JSON 响应工具
+│   ├── contract.ts      # wire 类型
+│   └── client/
+│       ├── index.tsx    # Client 半入口（slots 注册）
+│       ├── widget.tsx   # 悬浮额度窗
+│       ├── dashboard.tsx# 「额度」tab 仪表盘
+│       ├── charts.tsx   # 柱状图 / 热力图
+│       ├── styles.ts    # CSS
+│       ├── api.ts       # fetch 客户端
+│       └── store.ts     # 悬浮窗开关状态
+└── lib/                 # 构建产物（git 忽略）
 ```
 
 ## 已知限制
 
-- 动态插件的 view tab 会被平台强制排在所有内置 tab 之前（动态条目带负的 shadowing priority），因此「额度」会出现在「对话」前面，无法放到「轨迹」之后。
-- 悬浮窗的「是否展示」开关是会话内存态，刷新后回到显示状态。
+- 悬浮窗的「是否展示」开关是页面内存态，刷新后回到显示状态。
 - 用量数据来自本机 DSH 会话日志，不包含其它机器/账户的用量。
+- 费用按 deepseek-v4-pro 现价估算（2026-08-17 起 DeepSeek 改为峰谷定价，届时需要调整 `PRICE_*_PER_M`）。
 
 ## License
 
