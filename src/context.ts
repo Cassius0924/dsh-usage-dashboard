@@ -51,4 +51,6 @@ export interface SessionPersistenceFace {
 /** The host context this plugin's apply() receives. */
 export interface HostContext extends Context {
   webServer: WebServerFace
+  credentials: CredentialsFace
+  sessionPersistence: SessionPersistenceFace
 }
