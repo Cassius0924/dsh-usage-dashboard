@@ -9,8 +9,6 @@
 
 ![screenshot](screenshot.png)
 
-*DSH 主界面截图：右下角为悬浮额度窗。*
-
 ## 功能
 
 ### 悬浮额度窗（右下角）
