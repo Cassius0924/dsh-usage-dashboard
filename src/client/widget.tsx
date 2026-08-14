@@ -224,17 +224,10 @@ export function QuotaWidget(): ReactElement | null {
     } else if (primary !== null) {
       body = (
         <div className="dsh-quota-body">
+          <div className="dsh-quota-remaining-label">剩余余额</div>
           <div>
             <span className="dsh-quota-total">{fmt(primary.total)}</span>
             <span className="dsh-quota-currency">{primary.currency}</span>
-          </div>
-          <div className="dsh-quota-row">
-            <span className="dsh-quota-label">赠送额度</span>
-            <span className="dsh-quota-value">{fmt(primary.granted)}</span>
-          </div>
-          <div className="dsh-quota-row">
-            <span className="dsh-quota-label">充值额度</span>
-            <span className="dsh-quota-value">{fmt(primary.toppedUp)}</span>
           </div>
           {data?.isAvailable === false && (
             <div className="dsh-quota-row">

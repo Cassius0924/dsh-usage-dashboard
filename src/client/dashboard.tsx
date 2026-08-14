@@ -115,9 +115,16 @@ export function BalanceDashboard(): ReactElement {
         <div className="dq-card-title">账户余额</div>
         {primary !== null ? (
           <div className="dq-balance-grid">
-            <Stat label="总余额"><div className="dq-stat-value">{fmt(primary.total)} {primary.currency}</div></Stat>
-            <Stat label="赠送额度"><div className="dq-stat-value">{fmt(primary.granted)}</div></Stat>
-            <Stat label="充值额度"><div className="dq-stat-value">{fmt(primary.toppedUp)}</div></Stat>
+            <div className="dq-stat">
+              <div className="dq-stat-label">剩余余额</div>
+              <div className="dq-stat-value dq-remaining">
+                <span>{fmt(primary.total)} {primary.currency}</span>
+                <div className="dq-remaining-breakdown">
+                  <span>充值额度 {fmt(primary.toppedUp)}</span>
+                  <span className="dq-remaining-granted">赠送额度 {fmt(primary.granted)}</span>
+                </div>
+              </div>
+            </div>
             <Stat label="状态">
               <div className={`dq-stat-value${balance?.isAvailable === false ? ' dq-stat-value--bad' : ' dq-stat-value--ok'}`}>
                 {balance?.isAvailable === false ? '不可用' : '可用'}
