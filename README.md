@@ -7,6 +7,10 @@
 - 右下角一个可拖动的**悬浮额度窗**（实时余额）。
 - 顶部栏「对话 / 轨迹」旁的一个 **「额度」view tab**（完整仪表盘）。
 
+![screenshot](screenshot.png)
+
+*DSH 主界面截图：右下角为悬浮额度窗。*
+
 ## 功能
 
 ### 悬浮额度窗（右下角）
@@ -34,6 +38,13 @@
 | 消耗费用 | 按 deepseek-v4-pro 单价估算（见 `src/usage.ts` 里的 `PRICE_*_PER_M` 常量） |
 
 Host 半注册了自己的带信任校验的 JSON API（`/api/dsh-usage-dashboard/balance`、`/api/dsh-usage-dashboard/usage`），Client 半用同源 `fetch` 调用它并渲染 UI。
+
+### 缓存（避免每次点开 tab 重新加载）
+
+- **Host 记忆缓存**（`src/memo.ts`）：余额 60s、用量 5min 的 TTL，并发请求去重，失败结果不缓存。用量聚合要重放全部会话日志，这是主要的耗时点。
+- **HTTP 缓存**：成功的响应带 `Cache-Control: private, max-age=…`，浏览器在 TTL 内直接命中，不发网络请求。
+- **Client 内存缓存**（`src/client/cache.ts`）：「额度」tab 首屏直接用缓存数据渲染（stale-while-revalidate），后台再刷新；只有从未缓存过才显示「加载中」。
+- **强制刷新**：仪表盘「↻ 刷新」按钮和悬浮窗「↻」按钮带 `?refresh=1` + `cache: 'no-store'`，同时绕过三层缓存。
 
 ## 安装 / 使用
 
