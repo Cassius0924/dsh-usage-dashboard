@@ -6,9 +6,9 @@
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeriodUsage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
-import { cacheSavingOf, costOf, pricingInfo } from './pricing.ts'
+import { cacheSavingOf, costOf, costUnderPeakEra, isPeak, pricingInfo } from './pricing.ts'
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n))
 
@@ -151,6 +151,13 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   const modelTotals = new Map<string, Bucket>()
   const modelDays = new Map<string, Map<string, Bucket>>()
   const modelHours = new Map<string, Map<string, Bucket>>()
+  // Peak / off-peak split, plus the same usage re-priced under the new table.
+  const peakSplit: PeakSplit = {
+    peak: { total: 0, cost: 0, calls: 0 },
+    offPeak: { total: 0, cost: 0, calls: 0 },
+    peakEraCost: 0,
+    offPeakEraCost: 0,
+  }
 
   /** Cost is computed once per event (it depends on the model and on whether
    *  the event landed in a peak window) and folded into every bucket. */
@@ -199,6 +206,12 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         overall.total += input + output + cache
         overall.cost += cost
         overall.cacheSavings += cacheSavingOf(time, model, cache)
+        const window = isPeak(time) ? peakSplit.peak : peakSplit.offPeak
+        window.total += input + output + cache
+        window.cost += cost
+        window.calls += 1
+        peakSplit.peakEraCost += costUnderPeakEra(time, model, input, cache, output)
+        peakSplit.offPeakEraCost += costUnderPeakEra(time, model, input, cache, output, true)
         overall.calls += 1
       })
     } catch {
@@ -271,6 +284,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       models,
       summary: summarize(dayMap, new Date()),
       pricing: pricingInfo(Date.now()),
+      peakSplit,
       totals: {
         input: overall.input,
         output: overall.output,

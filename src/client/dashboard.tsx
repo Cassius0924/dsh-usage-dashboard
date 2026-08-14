@@ -8,7 +8,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
-import type { BalanceData, ModelUsage, PeriodUsage, PricingInfo, UsageData } from '../contract.ts'
+import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, UsageData } from '../contract.ts'
 import { lowBalanceStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
@@ -208,6 +208,60 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
         {low
           ? '命中率偏低：频繁改动 system prompt / 工具定义会让前缀缓存失效，把稳定内容放在对话最前面能提高命中率。'
           : '前缀缓存把重复的 prompt 前缀按命中价计费，是这份账单上最大的省钱杠杆。'}
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Peak vs off-peak: which side of DeepSeek's price windows the usage falls on.
+ * Before the 2026-08-17 switch this answers "what will the new prices cost me";
+ * after it, "what would shifting work off-peak save me".
+ */
+function PeakCard(props: { split: PeakSplit; pricing: PricingInfo; currentCost: number }): ReactElement {
+  const { split, pricing, currentCost } = props
+  const total = split.peak.total + split.offPeak.total
+  if (total === 0) return <div className="dq-empty">还没有可按时段归类的用量。</div>
+  const peakShare = split.peak.total / total
+  const shiftSaving = split.peakEraCost - split.offPeakEraCost
+  const increase = split.peakEraCost - currentCost
+  const increasePercent = currentCost > 0 ? (increase / currentCost) * 100 : 0
+  return (
+    <div className="dq-peak">
+      <div
+        className="dq-peak-track"
+        role="img"
+        aria-label={`高峰时段 ${(peakShare * 100).toFixed(1)}%，闲时 ${((1 - peakShare) * 100).toFixed(1)}%`}
+      >
+        <div className="dq-peak-fill" style={{ width: `${peakShare * 100}%` }} />
+      </div>
+      <div className="dq-peak-legend">
+        <span><span className="dq-legend-swatch dq-legend-swatch--peak" />高峰 {(peakShare * 100).toFixed(1)}% · {fmtCompact(split.peak.total)} tokens · {fmtInt(split.peak.calls)} 次</span>
+        <span><span className="dq-legend-swatch dq-legend-swatch--offpeak" />闲时 {((1 - peakShare) * 100).toFixed(1)}% · {fmtCompact(split.offPeak.total)} tokens · {fmtInt(split.offPeak.calls)} 次</span>
+      </div>
+      <div className="dq-peak-figures">
+        {!pricing.splitActive && (
+          <div className="dq-stat">
+            <div className="dq-stat-label">同样用量在新价下</div>
+            <div className="dq-stat-value">
+              ¥ {fmt(split.peakEraCost)}
+              <span className="dq-peak-delta">较现价 +{increasePercent.toFixed(0)}%</span>
+            </div>
+          </div>
+        )}
+        <div className="dq-stat">
+          <div className="dq-stat-label">若高峰用量都挪到闲时</div>
+          <div className="dq-stat-value">
+            ¥ {fmt(split.offPeakEraCost)}
+            <span className="dq-peak-delta dq-peak-delta--save">可省 ¥{fmt(shiftSaving)}</span>
+          </div>
+        </div>
+      </div>
+      <p className="dq-peak-foot">
+        高峰时段为北京时间 {pricing.peakWindows.join('、')}，闲时价格减半。
+        {pricing.splitActive
+          ? '把批量、可延后的任务放到闲时跑，同样的 token 只要一半的钱。'
+          : `新价 ${pricing.switchDate} 00:00 生效；上面两个数字是按你已有的全部用量重算的。`}
       </p>
     </div>
   )
@@ -637,6 +691,20 @@ export function BalanceDashboard(): ReactElement {
           <UsageSkeleton />
         ) : (
           <div className="dq-empty">还没有用量记录。在 DSH 里跑一轮对话，这里会出现逐天 / 逐小时统计与费用估算。</div>
+        )}
+      </div>
+
+      <div className="dq-card">
+        <div className="dq-card-title">高峰 / 闲时分布</div>
+        {usage !== null ? (
+          <PeakCard split={usage.peakSplit} pricing={usage.pricing} currentCost={usage.totals.cost} />
+        ) : loadingUsage ? (
+          <>
+            <div className="dq-peak-track" />
+            <div className="dq-peak-figures"><Skel w={120} h={11} /><Skel w={96} h={20} /></div>
+          </>
+        ) : (
+          <div className="dq-empty">还没有可按时段归类的用量。</div>
         )}
       </div>
 

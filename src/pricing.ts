@@ -72,10 +72,24 @@ export function cacheSavingOf(timeMs: number, model: string, cache: number): num
   return (cache * (rates.input - rates.cacheHit)) / 1_000_000
 }
 
+const applyRates = (rates: PricingRates, input: number, cache: number, output: number): number =>
+  (input * rates.input + cache * rates.cacheHit + output * rates.output) / 1_000_000
+
 /** Estimated CNY cost of one usage record. */
 export function costOf(timeMs: number, model: string, input: number, cache: number, output: number): number {
-  const rates = ratesAt(timeMs, model)
-  return (input * rates.input + cache * rates.cacheHit + output * rates.output) / 1_000_000
+  return applyRates(ratesAt(timeMs, model), input, cache, output)
+}
+
+/**
+ * The same record priced under the peak/off-peak table regardless of when it
+ * happened — `forceOffPeak` prices it as if it had landed in an idle window.
+ * Used to answer "what will the new pricing cost me" before the switch and
+ * "what would shifting off-peak save" after it.
+ */
+export function costUnderPeakEra(timeMs: number, model: string, input: number, cache: number, output: number, forceOffPeak = false): number {
+  const peak = PEAK_RATES[tierOf(model)]
+  const rates = !forceOffPeak && isPeak(timeMs) ? peak : halved(peak)
+  return applyRates(rates, input, cache, output)
 }
 
 /** The price table to show the user, describing whatever is in effect now. */

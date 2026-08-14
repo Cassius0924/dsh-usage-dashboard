@@ -126,6 +126,21 @@ export interface PricingInfo {
   tiers: PricingTier[]
 }
 
+/**
+ * How usage divides between DeepSeek's peak and off-peak windows, plus the
+ * same usage re-priced two ways — so the 2026-08-17 change can be answered
+ * before it lands ("what will this cost me") and after ("what would shifting
+ * off-peak save me").
+ */
+export interface PeakSplit {
+  peak: PeriodUsage
+  offPeak: PeriodUsage
+  /** Every record priced under the peak/off-peak table, as actually classified. */
+  peakEraCost: number
+  /** Every record priced under that table as if it had landed off-peak. */
+  offPeakEraCost: number
+}
+
 export interface UsageData {
   daily: DailyUsage[]
   hourly: HourlyUsage[]
@@ -134,6 +149,7 @@ export interface UsageData {
   models: ModelUsage[]
   summary: UsageSummary
   pricing: PricingInfo
+  peakSplit: PeakSplit
 }
 
 export interface UsageResponse {
