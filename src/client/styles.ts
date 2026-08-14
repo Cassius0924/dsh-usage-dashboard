@@ -22,7 +22,7 @@ export const css = `
 .dsh-quota-label{color:var(--dsw-alias-label-secondary,#59636e)}
 .dsh-quota-value{color:var(--dsw-alias-label-primary,#1f2328);font-variant-numeric:tabular-nums}
 .dsh-quota-error{color:var(--dsw-alias-state-error-primary,#cf222e)}
-.dq-balance{display:flex;flex-direction:column;gap:16px;padding:20px 24px 48px;max-width:860px;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-primary,#1f2328)}
+.dq-balance{display:flex;flex-direction:column;gap:16px;padding:20px 24px 48px;max-width:860px;margin:0 auto;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-card{background:var(--dsw-alias-bg-layer-1,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));border-radius:12px;padding:16px}
 .dq-card-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#59636e);margin:0 0 12px;letter-spacing:.02em}
 .dq-balance-grid{display:flex;flex-wrap:wrap;gap:12px 24px}
