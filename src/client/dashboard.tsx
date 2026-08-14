@@ -38,6 +38,7 @@ export function BalanceDashboard(): ReactElement {
   const [loading, setLoading] = useState(cachedBalance === null && cachedUsage === null)
   const [refreshing, setRefreshing] = useState(false)
   const [widgetOn, setWidgetOn] = useState(getWidgetVisible())
+  const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
 
   const load = async (force: boolean): Promise<void> => {
     setError(null)
@@ -157,10 +158,34 @@ export function BalanceDashboard(): ReactElement {
               <Stat label="缓存命中"><div className="dq-stat-value">{fmtCompact(usage.totals.cache)}</div></Stat>
               <Stat label="模型调用"><div className="dq-stat-value">{fmtInt(usage.totals.calls)}</div></Stat>
             </div>
-            <div className="dq-chart-title">近 30 天 · 逐天用量</div>
-            <Bars data={dailyBars} height={120} labelEvery={5} />
-            <div className="dq-chart-title">按小时分布（0–23 点）</div>
-            <Bars data={hourlyBars} height={100} labelEvery={3} />
+            <div className="dq-chart-block-head">
+              <div className="dq-chart-title">
+                {barMode === 'daily' ? '近 30 天 · 逐天用量' : '按小时分布（0–23 点）'}
+              </div>
+              <div className="dq-chart-switch" role="tablist" aria-label="切换图表维度">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={barMode === 'daily'}
+                  className={`dq-chart-switch-btn${barMode === 'daily' ? ' dq-chart-switch-btn--on' : ''}`}
+                  onClick={() => setBarMode('daily')}
+                >
+                  逐天
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={barMode === 'hourly'}
+                  className={`dq-chart-switch-btn${barMode === 'hourly' ? ' dq-chart-switch-btn--on' : ''}`}
+                  onClick={() => setBarMode('hourly')}
+                >
+                  逐小时
+                </button>
+              </div>
+            </div>
+            {barMode === 'daily'
+              ? <Bars data={dailyBars} height={120} labelEvery={5} />
+              : <Bars data={hourlyBars} height={100} labelEvery={3} />}
             <div className="dq-chart-title">近 12 周 · 每日用量热力图</div>
             <Heatmap data={usage.heatmap} />
           </>
