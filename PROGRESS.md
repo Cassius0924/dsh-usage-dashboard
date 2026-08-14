@@ -19,6 +19,10 @@
 ## 已完成
 
 - （轮次 0）`fix(build)`: pnpm-workspace.yaml allowBuilds，恢复 build/typecheck 硬门。
+- （轮次 1）`feat(widget)`: 悬浮窗状态持久化 + 吸附边界修复。
+  证据：playwright 实测 拖到左上→收起→硬刷新，位置 (296, 92) 与收起态完全保持；
+  关掉开关再刷新 widget 不再出现；控制台 0 错误。
+  同轮修掉 P0：刷新后 widget 盖住 Chat/Trajectory/额度 tab 栏（顶部边界退化成 0）。
 
 ## 遗留问题
 

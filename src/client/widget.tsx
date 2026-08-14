@@ -1,13 +1,26 @@
-/** The draggable bottom-right floating balance widget. */
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
+/** The draggable bottom-right floating balance widget.
+ *
+ * Where it sits (corner) and whether it is collapsed are user choices, so both
+ * are persisted (see ./prefs.ts) and restored before the first paint; the
+ * widget also re-snaps to its corner when the frame resizes (window resize,
+ * sidebar collapse) instead of stranding itself at stale pixel coordinates.
+ */
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
 import { fetchBalance, getCachedBalance } from './api.ts'
 import { fmt } from './charts.tsx'
 import type { BalanceData } from '../contract.ts'
+import { isBoolean, loadPref, savePref } from './prefs.ts'
 import { getWidgetVisible, subscribeWidgetVisible } from './store.ts'
 
 const MARGIN = 16
 
 type Corner = 'tl' | 'tr' | 'bl' | 'br'
+
+const CORNER_KEY = 'widget.corner'
+const COLLAPSED_KEY = 'widget.collapsed'
+
+const isCorner = (value: unknown): boolean =>
+  value === 'tl' || value === 'tr' || value === 'bl' || value === 'br'
 
 interface Bounds {
   left: number
@@ -27,7 +40,23 @@ interface DragSession {
   bounds: Bounds
 }
 
-/** Draggable area = the frame minus the left sidebar and the session header. */
+/** The shell's main column: the region between the sidebar and the details
+ *  panel. Found through the stable `conversation` slot anchor rather than the
+ *  hashed layout class names. */
+function getMainColumn(frame: HTMLElement): HTMLElement | null {
+  const anchor = frame.querySelector('[data-slot="conversation"]')
+  const column = anchor?.parentElement ?? null
+  return column === frame ? null : column
+}
+
+/**
+ * Draggable area = the main column minus the session header.
+ *
+ * Using the main column (rather than the whole frame minus the sidebar) also
+ * keeps the widget clear of the right-hand details panel when it is open.
+ * The header is excluded so the widget can never park on top of the
+ * Chat / Trajectory / 额度 tab row and swallow its clicks.
+ */
 function getBounds(node: HTMLElement | null): Bounds {
   const fallback: Bounds = { left: 0, top: 0, right: 100000, bottom: 100000 }
   if (node === null) return fallback
@@ -35,17 +64,25 @@ function getBounds(node: HTMLElement | null): Bounds {
   const frame = overlay?.parentElement ?? null
   if (frame === null) return fallback
   const frameRect = frame.getBoundingClientRect()
-  const sidebar = frame.children[0] as HTMLElement | undefined
-  const sidebarRect = sidebar?.getBoundingClientRect() ?? null
-  const left = sidebarRect !== null ? sidebarRect.right : frameRect.left
+  let left = frameRect.left
+  let right = frameRect.right
   let top = frameRect.top
+  const mainRect = getMainColumn(frame)?.getBoundingClientRect() ?? null
+  if (mainRect !== null && mainRect.width > 0) {
+    left = mainRect.left
+    right = mainRect.right
+    top = mainRect.top
+  } else {
+    const sidebarRect = (frame.children[0] as HTMLElement | undefined)?.getBoundingClientRect() ?? null
+    if (sidebarRect !== null) left = sidebarRect.right
+  }
   const headerAnchor = frame.querySelector('[data-slot="conversation.session.header"]')
   const headerEl = headerAnchor?.firstElementChild as HTMLElement | null
   if (headerEl !== null && headerEl !== undefined) {
     const headerRect = headerEl.getBoundingClientRect()
     if (headerRect.height > 0 && headerRect.bottom > top) top = headerRect.bottom
   }
-  return { left, top, right: frameRect.right, bottom: frameRect.bottom }
+  return { left, top, right, bottom: frameRect.bottom }
 }
 
 function cornerPos(corner: Corner, node: HTMLElement | null, bounds: Bounds): { x: number; y: number } {
@@ -70,9 +107,9 @@ export function QuotaWidget(): ReactElement | null {
   const [data, setData] = useState<BalanceData | null>(cachedBalance?.data ?? null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(cachedBalance === null)
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => loadPref<boolean>(COLLAPSED_KEY, isBoolean, false))
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
-  const [corner, setCorner] = useState<Corner>('br')
+  const [corner, setCorner] = useState<Corner>(() => loadPref<Corner>(CORNER_KEY, isCorner, 'br'))
   const [dragging, setDragging] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<DragSession | null>(null)
@@ -102,13 +139,43 @@ export function QuotaWidget(): ReactElement | null {
     return () => clearInterval(id)
   }, [])
 
-  // Re-snap to the current corner when collapse/expand changes the size.
-  useEffect(() => {
-    if (pos === null) return
+  /**
+   * Keep the widget parked in its corner: on mount (restoring the persisted
+   * corner before the first paint), when collapse/expand changes its size, and
+   * whenever the layout moves under it — window resize, sidebar collapse or
+   * the details panel opening (observed), plus a slow poll that catches the
+   * one change no observer reports: the session header mounting *after* the
+   * overlay, which would otherwise leave the widget parked over the tab row.
+   *
+   * `place` keeps the previous object when the corner has not actually moved,
+   * so repeated triggers cost one rect read and no re-render.
+   */
+  useLayoutEffect(() => {
+    if (!visible) return
     const node = rootRef.current
     if (node === null) return
-    setPos(cornerPos(corner, node, getBounds(node)))
-  }, [collapsed]) // eslint-disable-line react-hooks/exhaustive-deps
+    const place = (): void => {
+      if (dragRef.current !== null) return
+      const next = cornerPos(corner, node, getBounds(node))
+      setPos(prev => (prev !== null && prev.x === next.x && prev.y === next.y ? prev : next))
+    }
+    place()
+    const frame = node.closest('[data-shell-overlay]')?.parentElement as HTMLElement | null
+    let observer: ResizeObserver | null = null
+    if (frame !== null && typeof ResizeObserver === 'function') {
+      observer = new ResizeObserver(place)
+      observer.observe(frame)
+      const main = getMainColumn(frame)
+      if (main !== null) observer.observe(main)
+    }
+    window.addEventListener('resize', place)
+    const poll = setInterval(place, 1000)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', place)
+      clearInterval(poll)
+    }
+  }, [visible, corner, collapsed])
 
   const snapToNearest = (session: DragSession): void => {
     const node = rootRef.current
@@ -135,6 +202,7 @@ export function QuotaWidget(): ReactElement | null {
       }
     }
     setCorner(best.c)
+    savePref(CORNER_KEY, best.c)
     setPos({ x: best.x, y: best.y })
   }
 
@@ -270,7 +338,20 @@ export function QuotaWidget(): ReactElement | null {
           </div>
           <div className="dsh-quota-actions">
             <button className="dsh-quota-btn" type="button" title="刷新" onClick={() => { void load(true, true) }}>↻</button>
-            <button className="dsh-quota-btn" type="button" title={collapsed ? '展开' : '收起'} onClick={() => setCollapsed(!collapsed)}>{collapsed ? '+' : '−'}</button>
+            <button
+              className="dsh-quota-btn"
+              type="button"
+              title={collapsed ? '展开' : '收起'}
+              aria-label={collapsed ? '展开额度窗口' : '收起额度窗口'}
+              aria-expanded={!collapsed}
+              onClick={() => {
+                const next = !collapsed
+                setCollapsed(next)
+                savePref(COLLAPSED_KEY, next)
+              }}
+            >
+              {collapsed ? '+' : '−'}
+            </button>
           </div>
         </div>
         {body}
