@@ -50,12 +50,41 @@ function getMainColumn(frame: HTMLElement): HTMLElement | null {
 }
 
 /**
- * Draggable area = the main column minus the session header.
+ * The laid-out box behind a slot. Slot wrappers are 0×0, and which neighbour
+ * carries the real box differs per slot: the session header renders inside its
+ * wrapper (`'child'`), while the composer's wrapper sits inside the seat that
+ * reserves the space (`'ancestor'`). Picking the wrong side silently yields a
+ * box in the wrong place, so the caller says which one it means.
+ */
+function slotBox(frame: HTMLElement, slot: string, side: 'child' | 'ancestor'): DOMRect | null {
+  const anchor = frame.querySelector(`[data-slot="${slot}"]`)
+  if (anchor === null) return null
+  if (side === 'child') {
+    const rect = (anchor.firstElementChild as HTMLElement | null)?.getBoundingClientRect() ?? null
+    return rect !== null && rect.height > 0 ? rect : null
+  }
+  let el: HTMLElement | null = anchor.parentElement
+  for (let depth = 0; depth < 4 && el !== null && el !== frame; depth++) {
+    const rect = el.getBoundingClientRect()
+    if (rect.height > 0) return rect
+    el = el.parentElement
+  }
+  return null
+}
+
+/** Below this the region is too short to park a widget in, so an exclusion is
+ *  skipped rather than squeezing the widget out of the frame. */
+const MIN_REGION_HEIGHT = 140
+
+/**
+ * Draggable area = the main column minus the session header and the composer.
  *
  * Using the main column (rather than the whole frame minus the sidebar) also
  * keeps the widget clear of the right-hand details panel when it is open.
- * The header is excluded so the widget can never park on top of the
- * Chat / Trajectory / 额度 tab row and swallow its clicks.
+ * The header is excluded so the widget can never park on the Chat / Trajectory
+ * / 额度 tab row and swallow its clicks, and the composer is excluded because a
+ * bottom-right widget otherwise covers the model picker and the send button —
+ * the two controls the user reaches for most.
  */
 function getBounds(node: HTMLElement | null): Bounds {
   const fallback: Bounds = { left: 0, top: 0, right: 100000, bottom: 100000 }
@@ -76,13 +105,16 @@ function getBounds(node: HTMLElement | null): Bounds {
     const sidebarRect = (frame.children[0] as HTMLElement | undefined)?.getBoundingClientRect() ?? null
     if (sidebarRect !== null) left = sidebarRect.right
   }
-  const headerAnchor = frame.querySelector('[data-slot="conversation.session.header"]')
-  const headerEl = headerAnchor?.firstElementChild as HTMLElement | null
-  if (headerEl !== null && headerEl !== undefined) {
-    const headerRect = headerEl.getBoundingClientRect()
-    if (headerRect.height > 0 && headerRect.bottom > top) top = headerRect.bottom
+  let bottom = frameRect.bottom
+  const headerRect = slotBox(frame, 'conversation.session.header', 'child')
+  if (headerRect !== null && headerRect.bottom > top && headerRect.bottom < bottom - MIN_REGION_HEIGHT) {
+    top = headerRect.bottom
   }
-  return { left, top, right, bottom: frameRect.bottom }
+  const composerRect = slotBox(frame, 'conversation.composer.dock', 'ancestor')
+  if (composerRect !== null && composerRect.top < bottom && composerRect.top > top + MIN_REGION_HEIGHT) {
+    bottom = composerRect.top
+  }
+  return { left, top, right, bottom }
 }
 
 function cornerPos(corner: Corner, node: HTMLElement | null, bounds: Bounds): { x: number; y: number } {

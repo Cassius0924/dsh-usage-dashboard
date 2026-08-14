@@ -77,6 +77,10 @@
   柱状图出现「峰值 1.1亿 tokens」；悬浮窗收起态宽度 285 → 270（≤ max-width）；
   键盘 Tab 遍历 10 个可聚焦元素全部拿到 2px 焦点环，顺序合理；控制台 0 错误。
 
+- （轮次 14）`fix(widget)` + `docs`: 悬浮窗停在右下角时压住输入框右端（模型选择/发送按钮）——
+  边界下沿改为排除 composer。证据：修前 `overlaps=true` 且输入框右侧控件 `BLOCKED by widget`；
+  修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
+
 ## 遗留问题
 
 
