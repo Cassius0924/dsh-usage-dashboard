@@ -1,25 +1,41 @@
 /**
- * Package-local store shared by the floating widget and the dashboard toggle.
- * The visibility choice is persisted, so hiding the widget survives a refresh.
+ * Package-local stores for settings both surfaces read: the dashboard writes
+ * them, the floating widget reacts. Every value is persisted (see ./prefs.ts),
+ * so a choice survives a page refresh.
  */
 import { isBoolean, loadPref, savePref } from './prefs.ts'
 
-const WIDGET_VISIBLE_KEY = 'widget.visible'
-
-let widgetVisible = loadPref<boolean>(WIDGET_VISIBLE_KEY, isBoolean, true)
-const listeners = new Set<() => void>()
-
-export const getWidgetVisible = (): boolean => widgetVisible
-
-export const setWidgetVisible = (value: boolean): void => {
-  widgetVisible = value
-  savePref(WIDGET_VISIBLE_KEY, value)
-  for (const listener of [...listeners]) listener()
+export interface Store<T> {
+  get(): T
+  set(value: T): void
+  subscribe(fn: () => void): () => void
 }
 
-export const subscribeWidgetVisible = (fn: () => void): (() => void) => {
-  listeners.add(fn)
-  return () => {
-    listeners.delete(fn)
+function createStore<T>(key: string, isValid: (value: unknown) => boolean, fallback: T): Store<T> {
+  let current = loadPref<T>(key, isValid, fallback)
+  const listeners = new Set<() => void>()
+  return {
+    get: () => current,
+    set: (value: T) => {
+      current = value
+      savePref(key, value)
+      for (const listener of [...listeners]) listener()
+    },
+    subscribe: (fn: () => void) => {
+      listeners.add(fn)
+      return () => {
+        listeners.delete(fn)
+      }
+    },
   }
 }
+
+const isThreshold = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0
+
+/** Whether the floating balance widget is shown. */
+export const widgetVisibleStore = createStore<boolean>('widget.visible', isBoolean, true)
+
+/** Balance (in the account's own currency) below which both surfaces warn.
+ *  0 turns the warning off. */
+export const lowBalanceStore = createStore<number>('alert.lowBalance', isThreshold, 10)

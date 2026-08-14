@@ -10,7 +10,7 @@ import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUs
 import { fmt } from './charts.tsx'
 import type { BalanceData, UsageData } from '../contract.ts'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
-import { getWidgetVisible, subscribeWidgetVisible } from './store.ts'
+import { lowBalanceStore, widgetVisibleStore } from './store.ts'
 
 const MARGIN = 16
 
@@ -100,8 +100,10 @@ function cornerPos(corner: Corner, node: HTMLElement | null, bounds: Bounds): { 
 }
 
 export function QuotaWidget(): ReactElement | null {
-  const [visible, setVisible] = useState(getWidgetVisible())
-  useEffect(() => subscribeWidgetVisible(() => setVisible(getWidgetVisible())), [])
+  const [visible, setVisible] = useState(widgetVisibleStore.get())
+  useEffect(() => widgetVisibleStore.subscribe(() => setVisible(widgetVisibleStore.get())), [])
+  const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
+  useEffect(() => lowBalanceStore.subscribe(() => setLowBalance(lowBalanceStore.get())), [])
 
   const cachedBalance = getCachedBalance()
   const [data, setData] = useState<BalanceData | null>(cachedBalance?.data ?? null)
@@ -290,9 +292,13 @@ export function QuotaWidget(): ReactElement | null {
   if (!visible) return null
 
   const primary = data !== null && data.balances.length > 0 ? data.balances[0] : null
-  const dotClass = primary !== null
-    ? (data?.isAvailable === false ? 'dsh-quota-dot dsh-quota-dot--error' : 'dsh-quota-dot')
-    : 'dsh-quota-dot dsh-quota-dot--idle'
+  const balanceValue = primary !== null ? Number(primary.total) : Number.NaN
+  const low = lowBalance > 0 && Number.isFinite(balanceValue) && balanceValue < lowBalance
+  const dotClass = primary === null
+    ? 'dsh-quota-dot dsh-quota-dot--idle'
+    : data?.isAvailable === false
+      ? 'dsh-quota-dot dsh-quota-dot--error'
+      : low ? 'dsh-quota-dot dsh-quota-dot--warn' : 'dsh-quota-dot'
 
   // The usage figure can be minutes old (it is only refreshed on demand), so
   // say how old rather than presenting it as live.
@@ -309,8 +315,8 @@ export function QuotaWidget(): ReactElement | null {
       body = (
         <div className="dsh-quota-body">
           <div className="dsh-quota-remaining-label">剩余余额</div>
-          <div>
-            <span className="dsh-quota-total">{fmt(primary.total)}</span>
+          <div title={low ? `余额低于预警线 ${fmt(lowBalance)}` : undefined}>
+            <span className={`dsh-quota-total${low ? ' dsh-quota-total--low' : ''}`}>{fmt(primary.total)}</span>
             <span className="dsh-quota-currency">{primary.currency}</span>
           </div>
           {usage.data !== null && (
@@ -354,7 +360,7 @@ export function QuotaWidget(): ReactElement | null {
             <span className={dotClass} />
             <span>DeepSeek 额度</span>
             {collapsed && primary !== null && (
-              <span className="dsh-quota-collapsed-total">{fmt(primary.total)} {primary.currency}</span>
+              <span className={`dsh-quota-collapsed-total${low ? ' dsh-quota-total--low' : ''}`}>{fmt(primary.total)} {primary.currency}</span>
             )}
           </div>
           <div className="dsh-quota-actions">

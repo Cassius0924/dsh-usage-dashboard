@@ -9,7 +9,7 @@ import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNod
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import type { BalanceData, ModelUsage, PeriodUsage, PricingInfo, UsageData } from '../contract.ts'
-import { getWidgetVisible, setWidgetVisible } from './store.ts'
+import { lowBalanceStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
 function Skel(props: { w: number; h: number }): ReactElement {
@@ -332,7 +332,8 @@ export function BalanceDashboard(): ReactElement {
   const [loadingUsage, setLoadingUsage] = useState(cachedUsage === null)
   const [refreshing, setRefreshing] = useState(false)
   const hadDataRef = useRef(cachedBalance !== null || cachedUsage !== null)
-  const [widgetOn, setWidgetOn] = useState(getWidgetVisible())
+  const [widgetOn, setWidgetOn] = useState(widgetVisibleStore.get())
+  const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
   const [selectedModels, setSelectedModels] = useState<string[]>([])
 
@@ -387,7 +388,12 @@ export function BalanceDashboard(): ReactElement {
   const toggle = (): void => {
     const next = !widgetOn
     setWidgetOn(next)
-    setWidgetVisible(next)
+    widgetVisibleStore.set(next)
+  }
+
+  const changeLowBalance = (value: number): void => {
+    setLowBalance(value)
+    lowBalanceStore.set(value)
   }
 
   const primary = balance !== null && balance.balances.length > 0 ? balance.balances[0] : null
@@ -399,6 +405,8 @@ export function BalanceDashboard(): ReactElement {
     ? recentDays.reduce((sum, d) => sum + d.cost, 0) / recentDays.length
     : 0
   const balanceValue = primary !== null ? Number(primary.total) : Number.NaN
+  // 0 disables the warning; an unreadable balance never triggers it.
+  const balanceLow = lowBalance > 0 && Number.isFinite(balanceValue) && balanceValue < lowBalance
   const daysLeft = avgDailyCost > 0 && Number.isFinite(balanceValue) ? balanceValue / avgDailyCost : null
   const daysLeftText = daysLeft === null
     ? '—'
@@ -480,6 +488,17 @@ export function BalanceDashboard(): ReactElement {
           {refreshing ? '刷新中' : '刷新'}
         </button>
       </div>
+
+      {balanceLow && (
+        <div className="dq-alert" role="status">
+          <span className="dq-alert-icon" aria-hidden="true">!</span>
+          <div>
+            <strong>余额 {fmt(balanceValue)} {primary?.currency} 已低于预警线 {fmt(lowBalance)}</strong>
+            {daysLeft !== null && <>，按近期用量估计还能撑 {daysLeftText}</>}。
+            <a className="dq-alert-link" href="https://platform.deepseek.com/top_up" target="_blank" rel="noreferrer">去充值</a>
+          </div>
+        </div>
+      )}
 
       <div className="dq-card">
         <div className="dq-card-title">账户余额</div>
@@ -656,10 +675,30 @@ export function BalanceDashboard(): ReactElement {
       </div>
 
       <div className="dq-card">
+        <div className="dq-card-title">设置</div>
         <label className="dq-toggle">
           <input type="checkbox" checked={widgetOn} onChange={toggle} />
           <span>显示右下角悬浮额度窗口</span>
         </label>
+        <div className="dq-setting">
+          <label className="dq-setting-label" htmlFor="dq-low-balance">余额预警线</label>
+          <div className="dq-setting-control">
+            <input
+              id="dq-low-balance"
+              className="dq-number"
+              type="number"
+              min={0}
+              step={1}
+              value={lowBalance}
+              onChange={e => changeLowBalance(Math.max(0, Number(e.target.value) || 0))}
+            />
+            <span className="dq-setting-hint">
+              {lowBalance > 0
+                ? `余额低于 ${fmt(lowBalance)} ${primary?.currency ?? 'CNY'} 时，这里和悬浮窗都会转为警示色。填 0 关闭。`
+                : '已关闭余额预警。填一个大于 0 的数开启。'}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   )
