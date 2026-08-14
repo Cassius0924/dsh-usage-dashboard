@@ -5,10 +5,10 @@
  * refresh then updates it without blocking; a full-screen 加载中 only
  * appears when nothing has ever been cached.
  */
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
-import { Bars, Heatmap, fmt, fmtCompact, fmtInt } from './charts.tsx'
-import type { BalanceData, UsageData } from '../contract.ts'
+import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
+import type { BalanceData, ModelUsage, UsageData } from '../contract.ts'
 import { getWidgetVisible, setWidgetVisible } from './store.ts'
 
 function Stat(props: { label: string; children: ReactNode }): ReactElement {
@@ -26,6 +26,69 @@ function Link(props: { href: string; children: ReactNode }): ReactElement {
   )
 }
 
+export const modelKeyOf = (m: ModelUsage): string => (m.provider !== '' ? `${m.provider}/${m.model}` : m.model)
+
+export const modelNameOf = (m: ModelUsage): string => (m.model !== '' ? m.model : '未知模型')
+
+/** Multi-select model dropdown feeding the grouped bar chart. */
+function ModelPicker(props: {
+  models: ModelUsage[]
+  selected: string[]
+  onChange: (keys: string[]) => void
+}): ReactElement | null {
+  const { models } = props
+  if (models.length === 0) return null
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent): void => {
+      if (rootRef.current !== null && !rootRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    return () => document.removeEventListener('mousedown', onDown)
+  }, [open])
+
+  const toggle = (key: string): void => {
+    props.onChange(
+      props.selected.includes(key)
+        ? props.selected.filter(k => k !== key)
+        : [...props.selected, key],
+    )
+  }
+
+  const label = props.selected.length === 0 ? '全部模型' : `模型 ×${props.selected.length}`
+
+  return (
+    <div className="dq-model-picker" ref={rootRef}>
+      <button type="button" className="dq-model-btn" onClick={() => setOpen(!open)}>{label}</button>
+      {open && (
+        <div className="dq-model-menu">
+          <label className="dq-model-item dq-model-item--all">
+            <input
+              type="checkbox"
+              checked={props.selected.length === 0}
+              onChange={() => props.onChange([])}
+            />
+            <span>全部模型</span>
+          </label>
+          {models.map(m => {
+            const key = modelKeyOf(m)
+            return (
+              <label key={key} className="dq-model-item">
+                <input type="checkbox" checked={props.selected.includes(key)} onChange={() => toggle(key)} />
+                <span>{modelNameOf(m)}</span>
+                <span className="dq-model-tag">{fmtCompact(m.total)}</span>
+              </label>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function BalanceDashboard(): ReactElement {
   // Seed state from the cache so the tab never waits on the network when
   // data has been fetched before (stale-while-revalidate).
@@ -39,6 +102,7 @@ export function BalanceDashboard(): ReactElement {
   const [refreshing, setRefreshing] = useState(false)
   const [widgetOn, setWidgetOn] = useState(getWidgetVisible())
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
+  const [selectedModels, setSelectedModels] = useState<string[]>([])
 
   const load = async (force: boolean): Promise<void> => {
     setError(null)
@@ -92,6 +156,39 @@ export function BalanceDashboard(): ReactElement {
     value: h.total,
     title: `${h.hour} 点 · ${fmtInt(h.total)} tokens · ${h.calls} 次调用`,
   }))
+
+  const modelList = usage?.models ?? []
+  const availableModelKeys = new Set(modelList.map(modelKeyOf))
+  const effectiveSelection = selectedModels.filter(k => availableModelKeys.has(k))
+
+  // Per-model series for the grouped bar chart (only when models are selected).
+  const grouped = effectiveSelection.map((key, idx) => {
+    const m = modelList.find(x => modelKeyOf(x) === key)
+    const name = m === undefined ? key : modelNameOf(m)
+    const color = MODEL_COLORS[idx % MODEL_COLORS.length]
+    if (barMode === 'daily') {
+      return {
+        key,
+        name,
+        color,
+        bars: (m?.daily ?? []).map((p, i) => ({
+          label: (usage?.daily ?? [])[i]?.date.slice(8, 10) ?? '',
+          value: p.total,
+          title: `${name} · ${(usage?.daily ?? [])[i]?.date ?? ''} · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
+        })),
+      }
+    }
+    return {
+      key,
+      name,
+      color,
+      bars: (m?.hourly ?? []).map((p, i) => ({
+        label: String(i),
+        value: p.total,
+        title: `${name} · ${i} 点 · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
+      })),
+    }
+  })
 
   return (
     <div className="dq-balance">
@@ -162,30 +259,51 @@ export function BalanceDashboard(): ReactElement {
               <div className="dq-chart-title">
                 {barMode === 'daily' ? '近 30 天 · 逐天用量' : '按小时分布（0–23 点）'}
               </div>
-              <div className="dq-chart-switch" role="tablist" aria-label="切换图表维度">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={barMode === 'daily'}
-                  className={`dq-chart-switch-btn${barMode === 'daily' ? ' dq-chart-switch-btn--on' : ''}`}
-                  onClick={() => setBarMode('daily')}
-                >
-                  逐天
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={barMode === 'hourly'}
-                  className={`dq-chart-switch-btn${barMode === 'hourly' ? ' dq-chart-switch-btn--on' : ''}`}
-                  onClick={() => setBarMode('hourly')}
-                >
-                  逐小时
-                </button>
+              <div className="dq-chart-controls">
+                <ModelPicker models={modelList} selected={effectiveSelection} onChange={setSelectedModels} />
+                <div className="dq-chart-switch" role="tablist" aria-label="切换图表维度">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={barMode === 'daily'}
+                    className={`dq-chart-switch-btn${barMode === 'daily' ? ' dq-chart-switch-btn--on' : ''}`}
+                    onClick={() => setBarMode('daily')}
+                  >
+                    逐天
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={barMode === 'hourly'}
+                    className={`dq-chart-switch-btn${barMode === 'hourly' ? ' dq-chart-switch-btn--on' : ''}`}
+                    onClick={() => setBarMode('hourly')}
+                  >
+                    逐小时
+                  </button>
+                </div>
               </div>
             </div>
-            {barMode === 'daily'
-              ? <Bars data={dailyBars} height={120} labelEvery={5} />
-              : <Bars data={hourlyBars} height={100} labelEvery={3} />}
+            {grouped.length > 0 ? (
+              <>
+                <GroupedBars
+                  series={grouped}
+                  height={barMode === 'daily' ? 120 : 100}
+                  labelEvery={barMode === 'daily' ? 5 : 3}
+                />
+                <div className="dq-legend">
+                  {grouped.map(s => (
+                    <span key={s.key} className="dq-legend-item">
+                      <span className="dq-legend-swatch" style={{ background: s.color }} />
+                      {s.name}
+                    </span>
+                  ))}
+                </div>
+              </>
+            ) : barMode === 'daily' ? (
+              <Bars data={dailyBars} height={120} labelEvery={5} />
+            ) : (
+              <Bars data={hourlyBars} height={100} labelEvery={3} />
+            )}
             <div className="dq-chart-title">近 12 周 · 每日用量热力图</div>
             <Heatmap data={usage.heatmap} />
           </>

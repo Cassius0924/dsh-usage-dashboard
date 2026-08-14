@@ -7,6 +7,9 @@ export interface BarDatum {
   title?: string
 }
 
+/** Color palette for per-model grouped bars, cycled by model order. */
+export const MODEL_COLORS = ['#4176e6', '#2da44e', '#e16f24', '#8250df', '#bf8700', '#cf222e', '#1f883d', '#0969da']
+
 export function Bars(props: { data: BarDatum[]; height?: number; labelEvery?: number }): ReactElement {
   const { data, height = 120, labelEvery = 1 } = props
   let max = 0
@@ -33,6 +36,44 @@ export interface HeatDatum {
   total: number
   cost: number
   calls: number
+}
+
+/** Multi-series bar chart: one bar per series, side by side, per slot. */
+export function GroupedBars(props: {
+  series: Array<{ key: string; color: string; bars: BarDatum[] }>
+  height?: number
+  labelEvery?: number
+}): ReactElement {
+  const { series, height = 120, labelEvery = 1 } = props
+  const count = series.length > 0 ? series[0].bars.length : 0
+  let max = 0
+  for (const s of series) for (const datum of s.bars) if (datum.value > max) max = datum.value
+  const scale = max > 0 ? max : 1
+  return (
+    <div className="dq-bars" style={{ height: `${height + 18}px` }}>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="dq-bar-col">
+          <div className="dq-bar-group">
+            {series.map(s => {
+              const datum = s.bars[i]
+              const h = Math.max(1, Math.round((datum.value / scale) * height))
+              return (
+                <div
+                  key={s.key}
+                  className="dq-bar"
+                  style={{ height: `${h}px`, background: s.color }}
+                  title={datum.title ?? `${s.key}: ${datum.value.toLocaleString()}`}
+                />
+              )
+            })}
+          </div>
+          <div className="dq-bar-label" style={{ visibility: i % labelEvery === 0 ? 'visible' : 'hidden' }}>
+            {series[0].bars[i].label}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 function heatColor(level: number): string {

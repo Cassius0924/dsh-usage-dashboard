@@ -52,11 +52,33 @@ export interface UsageTotals {
   calls: number
 }
 
+/** One per-day / per-hour point of a single model's series. */
+export interface ModelSeriesPoint {
+  total: number
+  cost: number
+  calls: number
+}
+
+/** Per-model usage aggregation: overall totals plus 30-day and 24-hour series. */
+export interface ModelUsage {
+  provider: string
+  model: string
+  input: number
+  output: number
+  cache: number
+  total: number
+  cost: number
+  calls: number
+  daily: ModelSeriesPoint[]
+  hourly: ModelSeriesPoint[]
+}
+
 export interface UsageData {
   daily: DailyUsage[]
   hourly: HourlyUsage[]
   heatmap: HeatmapUsage[]
   totals: UsageTotals
+  models: ModelUsage[]
 }
 
 export interface UsageResponse {

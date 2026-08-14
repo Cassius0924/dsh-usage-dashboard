@@ -6,7 +6,7 @@
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
-import type { BalanceResponse, UsageData, UsageResponse } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, UsageData, UsageResponse } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n))
@@ -80,9 +80,26 @@ interface Bucket {
 
 const emptyBucket = (): Bucket => ({ input: 0, output: 0, cache: 0, total: 0, cost: 0, calls: 0 })
 
-function addUsageEvent(events: SessionEventFace[] | undefined, onEvent: (time: number, input: number, output: number, cache: number, reasoning: number) => void): void {
+/**
+ * Fold usage out of one session's event log. The model for every
+ * `assistant/message` usage record is the one from the latest preceding
+ * `request/header` event (each request logs one before dispatch), so usage
+ * can be attributed per model. Events without any preceding header fall back
+ * to the `''`/`''` (unknown) bucket.
+ */
+function addUsageEvent(events: SessionEventFace[] | undefined, onEvent: (time: number, input: number, output: number, cache: number, reasoning: number, provider: string, model: string) => void): void {
   if (events === undefined) return
+  let provider = ''
+  let model = ''
   for (const ev of events) {
+    if (ev?.type === 'request/header') {
+      const cfg = ev.data?.header?.config
+      if (cfg?.provider !== undefined && cfg?.model !== undefined) {
+        provider = cfg.provider
+        model = cfg.model
+      }
+      continue
+    }
     if (ev?.type !== 'assistant/message') continue
     const usage = ev.data?.usage
     if (usage === undefined) continue
@@ -91,7 +108,7 @@ function addUsageEvent(events: SessionEventFace[] | undefined, onEvent: (time: n
     const cache = Number(usage.cacheReadTokens) || 0
     const reasoning = Number(usage.reasoningTokens) || 0
     if (ev.time === undefined) continue
-    onEvent(ev.time, input, output, cache, reasoning)
+    onEvent(ev.time, input, output, cache, reasoning, provider, model)
   }
 }
 
@@ -106,6 +123,10 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   const dayMap = new Map<string, Bucket>()
   const hourMap = new Map<string, Bucket>()
   const overall: Bucket & { reasoning: number } = { ...emptyBucket(), reasoning: 0 }
+  // Per model: key `${provider}/${model}` -> totals and day/hour maps.
+  const modelTotals = new Map<string, Bucket>()
+  const modelDays = new Map<string, Map<string, Bucket>>()
+  const modelHours = new Map<string, Map<string, Bucket>>()
 
   const bump = (map: Map<string, Bucket>, key: string, input: number, output: number, cache: number): void => {
     const bucket = map.get(key) ?? emptyBucket()
@@ -124,12 +145,26 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     if (sid === undefined || sid === '') continue
     try {
       const { events } = await persistence.readFrom(sid, 0)
-      addUsageEvent(events, (time, input, output, cache, reasoning) => {
+      addUsageEvent(events, (time, input, output, cache, reasoning, provider, model) => {
         const d = new Date(time)
         const dayKey = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
         const hourKey = String(d.getHours())
+        const modelKey = `${provider}/${model}`
         bump(dayMap, dayKey, input, output, cache)
         bump(hourMap, hourKey, input, output, cache)
+        bump(modelTotals, modelKey, input, output, cache)
+        let days = modelDays.get(modelKey)
+        if (days === undefined) {
+          days = new Map()
+          modelDays.set(modelKey, days)
+        }
+        bump(days, dayKey, input, output, cache)
+        let hours = modelHours.get(modelKey)
+        if (hours === undefined) {
+          hours = new Map()
+          modelHours.set(modelKey, hours)
+        }
+        bump(hours, hourKey, input, output, cache)
         overall.input += input
         overall.output += output
         overall.cache += cache
@@ -165,12 +200,47 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     heatmap.push({ date: key, total: b.total, cost: b.cost, calls: b.calls })
   }
 
+  const models: ModelUsage[] = []
+  for (const [modelKey, bucket] of modelTotals) {
+    const slash = modelKey.indexOf('/')
+    const provider = slash < 0 ? '' : modelKey.slice(0, slash)
+    const model = slash < 0 ? modelKey : modelKey.slice(slash + 1)
+    const days = modelDays.get(modelKey)
+    const hours = modelHours.get(modelKey)
+    const daily: ModelSeriesPoint[] = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86_400_000)
+      const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+      const b = days?.get(key) ?? emptyBucket()
+      daily.push({ total: b.total, cost: b.cost, calls: b.calls })
+    }
+    const hourly: ModelSeriesPoint[] = []
+    for (let i = 0; i < 24; i++) {
+      const b = hours?.get(String(i)) ?? emptyBucket()
+      hourly.push({ total: b.total, cost: b.cost, calls: b.calls })
+    }
+    models.push({
+      provider,
+      model,
+      input: bucket.input,
+      output: bucket.output,
+      cache: bucket.cache,
+      total: bucket.total,
+      cost: bucket.cost,
+      calls: bucket.calls,
+      daily,
+      hourly,
+    })
+  }
+  models.sort((a, b) => b.total - a.total)
+
   return {
     ok: true,
     data: {
       daily,
       hourly,
       heatmap,
+      models,
       totals: {
         input: overall.input,
         output: overall.output,

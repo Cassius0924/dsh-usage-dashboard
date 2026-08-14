@@ -40,7 +40,10 @@ export interface TokenUsageFace {
 export interface SessionEventFace {
   type?: string
   time?: number
-  data?: { usage?: TokenUsageFace }
+  data?: {
+    usage?: TokenUsageFace
+    header?: { config?: { provider?: string; model?: string } }
+  }
 }
 
 export interface SessionPersistenceFace {
