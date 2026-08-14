@@ -114,9 +114,16 @@ export const css = `
 .dq-chart-switch-btn{border:none;background:transparent;color:var(--dsw-alias-label-secondary,#59636e);font-size:12px;line-height:1;padding:5px 12px;border-radius:999px;cursor:pointer;transition:background .15s ease,color .15s ease}
 .dq-chart-switch-btn:hover{color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-chart-switch-btn--on{background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#1f2328);box-shadow:0 1px 3px rgba(0,0,0,.14)}
+.dq-chart-wrap{position:relative}
+.dq-tip{position:absolute;transform:translate(-50%,14px);z-index:40;pointer-events:none;background:var(--dsw-alias-bg-inverse,#1f2328);color:var(--dsw-alias-label-inverse,#fff);border-radius:8px;padding:7px 10px;font-size:11.5px;line-height:1.55;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.28);font-variant-numeric:tabular-nums}
+.dq-tip-head{font-weight:650;margin-bottom:2px}
+.dq-tip-row{opacity:.85}
 .dq-bars{display:flex;align-items:flex-end;gap:2px;width:100%}
 .dq-bar-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch}
-.dq-bar{background:var(--dsw-alias-state-business-primary,#4176e6);border-radius:2px 2px 0 0;min-height:1px}
+.dq-bar{background:var(--dsw-alias-state-business-primary,#4176e6);border-radius:2px 2px 0 0;min-height:1px;transition:filter .12s ease}
+.dq-bar-col{cursor:default}
+.dq-bar-col:hover .dq-bar{filter:brightness(1.18) saturate(1.1)}
+.dq-heat-cell:not(.dq-heat-cell--pad):hover{outline:1.5px solid var(--dsw-alias-label-primary,#1f2328);outline-offset:1px}
 .dq-bar-label{font-size:9px;color:var(--dsw-alias-label-tertiary,#59636e);text-align:center;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dq-heat{display:flex;flex-direction:column;gap:8px;max-width:100%}
 .dq-heat-grid{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
@@ -129,6 +136,7 @@ export const css = `
 .dq-heat-week{display:flex;flex-direction:column;gap:3px}
 .dq-heat-cell{width:12px;height:12px;border-radius:2px;flex:none}
 .dq-heat-cell--pad{background:transparent}
+.dq-heat-key{width:12px;height:12px;border-radius:2px;flex:none}
 .dq-heat-scale{display:flex;align-items:center;gap:3px;font-size:10px;color:var(--dsw-alias-label-tertiary,#59636e);align-self:flex-end}
 .dq-heat-scale>span:first-child{margin-right:2px}
 .dq-heat-scale>span:last-child{margin-left:2px}
