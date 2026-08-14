@@ -20,8 +20,8 @@ async function getJson<T>(path: string, cache: RequestCache): Promise<T> {
   return res.json() as Promise<T>
 }
 
-const balanceCache = createCache<BalanceResponse>(BALANCE_TTL_MS)
-const usageCache = createCache<UsageResponse>(USAGE_TTL_MS)
+const balanceCache = createCache<BalanceResponse>(BALANCE_TTL_MS, 'dsh-usage-dashboard:balance')
+const usageCache = createCache<UsageResponse>(USAGE_TTL_MS, 'dsh-usage-dashboard:usage')
 
 /** Last cached value (possibly stale), for an instant first render. */
 export const getCachedBalance = (): BalanceResponse | null => balanceCache.get()?.data ?? null

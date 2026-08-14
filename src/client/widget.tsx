@@ -1,6 +1,6 @@
 /** The draggable bottom-right floating balance widget. */
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
-import { fetchBalance } from './api.ts'
+import { fetchBalance, getCachedBalance } from './api.ts'
 import { fmt } from './charts.tsx'
 import type { BalanceData } from '../contract.ts'
 import { getWidgetVisible, subscribeWidgetVisible } from './store.ts'
@@ -66,9 +66,10 @@ export function QuotaWidget(): ReactElement | null {
   const [visible, setVisible] = useState(getWidgetVisible())
   useEffect(() => subscribeWidgetVisible(() => setVisible(getWidgetVisible())), [])
 
-  const [data, setData] = useState<BalanceData | null>(null)
+  const cachedBalance = getCachedBalance()
+  const [data, setData] = useState<BalanceData | null>(cachedBalance?.data ?? null)
   const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(cachedBalance === null)
   const [collapsed, setCollapsed] = useState(false)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const [corner, setCorner] = useState<Corner>('br')
