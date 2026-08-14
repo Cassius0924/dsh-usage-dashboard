@@ -167,10 +167,53 @@ export const modelKeyOf = (m: ModelUsage): string => (m.provider !== '' ? `${m.p
 
 export const modelNameOf = (m: ModelUsage): string => (m.model !== '' ? m.model : '未知模型')
 
+/** Which model the money actually goes to, most expensive first. */
+function ModelRanking(props: {
+  models: ModelUsage[]
+  totalCost: number
+  colorOf: (key: string) => string
+}): ReactElement {
+  const { models, totalCost } = props
+  if (models.length === 0) return <div className="dq-empty">还没有可归类的模型用量。</div>
+  return (
+    <div className="dq-rank">
+      {models.map(m => {
+        const key = modelKeyOf(m)
+        const share = totalCost > 0 ? m.cost / totalCost : 0
+        return (
+          <div key={key} className="dq-rank-row">
+            <div className="dq-rank-head">
+              <span className="dq-rank-name" title={key}>
+                <span className="dq-legend-swatch" style={{ background: props.colorOf(key) }} />
+                {modelNameOf(m)}
+              </span>
+              <span className="dq-rank-cost">
+                ¥ {fmt(m.cost)}
+                <span className="dq-rank-share">{(share * 100).toFixed(1)}%</span>
+              </span>
+            </div>
+            <div
+              className="dq-rank-track"
+              role="img"
+              aria-label={`${modelNameOf(m)} 占总费用 ${(share * 100).toFixed(1)}%`}
+            >
+              <div className="dq-rank-fill" style={{ width: `${Math.max(share * 100, 1.5)}%`, background: props.colorOf(key) }} />
+            </div>
+            <div className="dq-rank-sub">
+              {fmtCompact(m.total)} tokens · {fmtInt(m.calls)} 次调用 · 输入 {fmtCompact(m.input)} / 输出 {fmtCompact(m.output)} / 缓存 {fmtCompact(m.cache)}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 /** Multi-select model dropdown feeding the grouped bar chart. */
 function ModelPicker(props: {
   models: ModelUsage[]
   selected: string[]
+  colorOf: (key: string) => string
   onChange: (keys: string[]) => void
 }): ReactElement | null {
   const { models } = props
@@ -215,6 +258,7 @@ function ModelPicker(props: {
             return (
               <label key={key} className="dq-model-item">
                 <input type="checkbox" checked={props.selected.includes(key)} onChange={() => toggle(key)} />
+                <span className="dq-legend-swatch" style={{ background: props.colorOf(key) }} />
                 <span>{modelNameOf(m)}</span>
                 <span className="dq-model-tag">{fmtCompact(m.total)}</span>
               </label>
@@ -313,15 +357,23 @@ export function BalanceDashboard(): ReactElement {
     title: `${h.hour} 点 · ${fmtInt(h.total)} tokens · ${h.calls} 次调用`,
   }))
 
-  const modelList = usage?.models ?? []
+  // One canonical model order — most expensive first — shared by the ranking
+  // card, the picker and the chart, so a model keeps its colour everywhere
+  // instead of being coloured by the order it happened to be ticked in.
+  const modelList = [...(usage?.models ?? [])].sort((a, b) => b.cost - a.cost)
   const availableModelKeys = new Set(modelList.map(modelKeyOf))
   const effectiveSelection = selectedModels.filter(k => availableModelKeys.has(k))
+  const colorOf = (key: string): string => {
+    const index = modelList.findIndex(m => modelKeyOf(m) === key)
+    return MODEL_COLORS[(index < 0 ? 0 : index) % MODEL_COLORS.length]
+  }
+  const modelCostTotal = modelList.reduce((sum, m) => sum + m.cost, 0)
 
   // Per-model series for the grouped bar chart (only when models are selected).
-  const grouped = effectiveSelection.map((key, idx) => {
+  const grouped = effectiveSelection.map(key => {
     const m = modelList.find(x => modelKeyOf(x) === key)
     const name = m === undefined ? key : modelNameOf(m)
-    const color = MODEL_COLORS[idx % MODEL_COLORS.length]
+    const color = colorOf(key)
     if (barMode === 'daily') {
       return {
         key,
@@ -445,7 +497,7 @@ export function BalanceDashboard(): ReactElement {
                 {barMode === 'daily' ? '近 30 天 · 逐天用量' : '按小时分布（0–23 点）'}
               </div>
               <div className="dq-chart-controls">
-                <ModelPicker models={modelList} selected={effectiveSelection} onChange={setSelectedModels} />
+                <ModelPicker models={modelList} selected={effectiveSelection} colorOf={colorOf} onChange={setSelectedModels} />
                 <div className="dq-chart-switch" role="tablist" aria-label="切换图表维度">
                   <button
                     type="button"
@@ -496,6 +548,25 @@ export function BalanceDashboard(): ReactElement {
           <UsageSkeleton />
         ) : (
           <div className="dq-empty">还没有用量记录。在 DSH 里跑一轮对话，这里会出现逐天 / 逐小时统计与费用估算。</div>
+        )}
+      </div>
+
+      <div className="dq-card">
+        <div className="dq-card-title">模型成本排行</div>
+        {usage !== null ? (
+          <ModelRanking models={modelList} totalCost={modelCostTotal} colorOf={colorOf} />
+        ) : loadingUsage ? (
+          <div className="dq-rank">
+            {[0, 1].map(i => (
+              <div key={i} className="dq-rank-row">
+                <Skel w={148} h={13} />
+                <div className="dq-rank-track" />
+                <Skel w={230} h={11} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dq-empty">还没有可归类的模型用量。</div>
         )}
       </div>
 
