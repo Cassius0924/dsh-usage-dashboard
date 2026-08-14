@@ -75,8 +75,21 @@ export const css = `
 .dq-heat-cell{width:12px;height:12px;border-radius:2px}
 .dq-muted{color:var(--dsw-alias-label-secondary,#59636e)}
 .dq-error{color:var(--dsw-alias-state-error-primary,#cf222e)}
+.dq-warn{color:var(--dsw-alias-state-warning-primary,#9a6700)}
+.dq-empty{color:var(--dsw-alias-label-secondary,#59636e);font-size:12.5px;line-height:1.6;padding:6px 0}
+.dq-skel{background:linear-gradient(90deg,rgba(125,135,155,.10) 25%,rgba(125,135,155,.20) 37%,rgba(125,135,155,.10) 63%);background-size:400% 100%;border-radius:5px;animation:dq-shimmer 1.5s ease-in-out infinite}
+.dq-stat .dq-skel+.dq-skel{margin-top:6px}
+.dq-skel-bars{display:flex;align-items:flex-end;gap:2px;width:100%;height:120px;margin-top:10px}
+.dq-skel-bar{flex:1 1 0;min-width:0;border-radius:2px 2px 0 0}
+@keyframes dq-shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
+@media (prefers-reduced-motion:reduce){.dq-skel{animation:none}.dq-refresh-icon--spin{animation:none}}
 .dq-status-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:20px}
 .dq-status-row .dq-muted,.dq-status-row .dq-error{font-size:12px}
-.dq-refresh-btn{border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#59636e);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
-.dq-refresh-btn:hover{border-color:var(--dsw-alias-state-business-primary,#0969da);color:var(--dsw-alias-state-business-primary,#0969da)}
+.dq-refresh-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#59636e);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;transition:border-color .15s ease,color .15s ease}
+.dq-refresh-btn:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary,#0969da);color:var(--dsw-alias-state-business-primary,#0969da)}
+.dq-refresh-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
+.dq-refresh-btn:disabled{cursor:default;opacity:.6}
+.dq-refresh-icon{display:inline-block;line-height:1}
+.dq-refresh-icon--spin{animation:dq-spin .9s linear infinite}
+@keyframes dq-spin{to{transform:rotate(360deg)}}
 `

@@ -23,14 +23,17 @@
   证据：playwright 实测 拖到左上→收起→硬刷新，位置 (296, 92) 与收起态完全保持；
   关掉开关再刷新 widget 不再出现；控制台 0 错误。
   同轮修掉 P0：刷新后 widget 盖住 Chat/Trajectory/额度 tab 栏（顶部边界退化成 0）。
+- （轮次 2）`fix(dashboard)`: 加载/空/错误/刷新失败四态分离。
+  证据：playwright 注入 3s 延迟 + 500 失败，实测 加载中 skeletons=43 / emptyStrings=0；
+  加载完 skeletons=0；刷新中按钮 disabled=true 文案「刷新中」；
+  刷新失败提示「用量刷新失败，正在展示缓存用量（HTTP 500）」且用量数据仍在。
 
 ## 遗留问题
 
-- P0 用量卡在 usage 接口加载的 ~4.8s 内显示「暂无用量数据」，把加载态误报成空态。
 - P0 flash 模型按 pro 价计费，费用估算偏高。
 - P0 2026-08-17 峰谷定价未适配。
 - P1 无「今日 / 本月」时间维度，只有累计数字。
 
 ## 下轮计划
 
-轮次 1：悬浮窗状态持久化（visible / corner / collapsed → localStorage），消灭 README 已知限制第 1 条。
+轮次 3：今日 / 本月消耗汇总卡（P0），给「累计」补上时间维度。

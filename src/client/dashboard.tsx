@@ -11,6 +11,41 @@ import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } fro
 import type { BalanceData, ModelUsage, UsageData } from '../contract.ts'
 import { getWidgetVisible, setWidgetVisible } from './store.ts'
 
+/** One shimmering placeholder block, sized by the caller. */
+function Skel(props: { w: number; h: number }): ReactElement {
+  return <div className="dq-skel" style={{ width: `${props.w}px`, height: `${props.h}px` }} />
+}
+
+/** Placeholder for the balance card while the first fetch is in flight. */
+function BalanceSkeleton(): ReactElement {
+  return (
+    <div className="dq-balance-grid">
+      <div className="dq-stat"><Skel w={56} h={11} /><Skel w={150} h={22} /></div>
+      <div className="dq-stat"><Skel w={28} h={11} /><Skel w={48} h={22} /></div>
+    </div>
+  )
+}
+
+/** Placeholder for the usage card: replaying every session log takes seconds,
+ *  and an empty-state string there would read as "you have no usage". */
+function UsageSkeleton(): ReactElement {
+  return (
+    <>
+      <div className="dq-usage-totals">
+        {[88, 104, 44, 44, 62, 62].map((w, i) => (
+          <div key={i} className="dq-stat"><Skel w={w} h={11} /><Skel w={w > 70 ? 84 : 56} h={20} /></div>
+        ))}
+      </div>
+      <Skel w={140} h={12} />
+      <div className="dq-skel-bars">
+        {Array.from({ length: 30 }, (_, i) => (
+          <div key={i} className="dq-skel dq-skel-bar" style={{ height: `${18 + ((i * 37) % 82)}px` }} />
+        ))}
+      </div>
+    </>
+  )
+}
+
 function Stat(props: { label: string; children: ReactNode }): ReactElement {
   return (
     <div className="dq-stat">
@@ -98,38 +133,57 @@ export function BalanceDashboard(): ReactElement {
   const [usage, setUsage] = useState<UsageData | null>(cachedUsage?.data ?? null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [loading, setLoading] = useState(cachedBalance === null && cachedUsage === null)
+  // Balance answers in well under a second, usage replays every session log and
+  // takes seconds — so they get their own loading flags and paint independently
+  // instead of the fast one waiting on the slow one.
+  const [loadingBalance, setLoadingBalance] = useState(cachedBalance === null)
+  const [loadingUsage, setLoadingUsage] = useState(cachedUsage === null)
   const [refreshing, setRefreshing] = useState(false)
+  const hadDataRef = useRef(cachedBalance !== null || cachedUsage !== null)
   const [widgetOn, setWidgetOn] = useState(getWidgetVisible())
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
   const [selectedModels, setSelectedModels] = useState<string[]>([])
 
+  const errText = (err: unknown): string => (err as { message?: string } | null)?.message ?? String(err)
+
+  /** Load both resources; each resolves to null on success or to its error
+   *  string on failure, so a partial failure can name the half that broke. */
   const load = async (force: boolean): Promise<void> => {
     setError(null)
     setNotice(null)
     setRefreshing(true)
-    try {
-      const [b, u] = await Promise.all([fetchBalance(force), fetchUsage(force)])
-      const nextB = b.ok && b.data !== undefined ? b.data : null
-      const nextU = u.ok && u.data !== undefined ? u.data : null
-      if (nextB !== null) setBalance(nextB)
-      if (nextU !== null) setUsage(nextU)
-      const haveAny = nextB !== null || nextU !== null || balance !== null || usage !== null
-      if (!haveAny) {
-        setError(b.error ?? u.error ?? '加载失败')
-      } else if (nextB === null && nextU === null) {
-        // Keep showing the cached data; just say the refresh failed.
-        setNotice('刷新失败，正在展示缓存数据')
+    const balanceTask = fetchBalance(force).then(res => {
+      if (res.ok && res.data !== undefined) {
+        setBalance(res.data)
+        hadDataRef.current = true
+        return null
       }
-    } catch (err) {
-      if (balance === null && usage === null) {
-        setError((err as { message?: string } | null)?.message ?? String(err))
-      } else {
-        setNotice('刷新失败，正在展示缓存数据')
+      return res.error ?? '余额加载失败'
+    }, err => errText(err)).then(result => {
+      setLoadingBalance(false)
+      return result
+    })
+    const usageTask = fetchUsage(force).then(res => {
+      if (res.ok && res.data !== undefined) {
+        setUsage(res.data)
+        hadDataRef.current = true
+        return null
       }
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
+      return res.error ?? '用量加载失败'
+    }, err => errText(err)).then(result => {
+      setLoadingUsage(false)
+      return result
+    })
+    const [balanceError, usageError] = await Promise.all([balanceTask, usageTask])
+    setRefreshing(false)
+    if (balanceError !== null && usageError !== null) {
+      // Nothing came back at all: an error only when there is nothing to show.
+      if (hadDataRef.current) setNotice(`刷新失败，正在展示缓存数据（${balanceError}）`)
+      else setError(balanceError)
+    } else if (balanceError !== null) {
+      setNotice(`余额刷新失败，正在展示缓存余额（${balanceError}）`)
+    } else if (usageError !== null) {
+      setNotice(`用量刷新失败，正在展示缓存用量（${usageError}）`)
     }
   }
 
@@ -194,18 +248,21 @@ export function BalanceDashboard(): ReactElement {
     <div className="dq-balance">
       <div className="dq-status-row">
         <div>
-          {loading && <span className="dq-muted">加载中…</span>}
-          {!loading && refreshing && <span className="dq-muted">更新中…</span>}
-          {notice !== null && <span className="dq-muted">{notice}</span>}
+          {(loadingBalance || loadingUsage) && <span className="dq-muted">加载中…</span>}
+          {!loadingBalance && !loadingUsage && refreshing && <span className="dq-muted">更新中…</span>}
+          {notice !== null && <span className="dq-warn">{notice}</span>}
           {error !== null && <span className="dq-error">{error}</span>}
         </div>
         <button
           type="button"
           className="dq-refresh-btn"
           title="强制刷新（绕过缓存）"
+          disabled={refreshing}
+          aria-busy={refreshing}
           onClick={() => { void load(true) }}
         >
-          ↻ 刷新
+          <span className={`dq-refresh-icon${refreshing ? ' dq-refresh-icon--spin' : ''}`}>↻</span>
+          {refreshing ? '刷新中' : '刷新'}
         </button>
       </div>
 
@@ -229,8 +286,10 @@ export function BalanceDashboard(): ReactElement {
               </div>
             </Stat>
           </div>
+        ) : loadingBalance ? (
+          <BalanceSkeleton />
         ) : (
-          <div className="dq-muted">暂无余额数据</div>
+          <div className="dq-empty">读不到余额。请确认「设置 → 模型」里已填 DEEPSEEK_API_KEY，然后点右上角刷新。</div>
         )}
       </div>
 
@@ -307,8 +366,10 @@ export function BalanceDashboard(): ReactElement {
             <div className="dq-chart-title">近 12 周 · 每日用量热力图</div>
             <Heatmap data={usage.heatmap} />
           </>
+        ) : loadingUsage ? (
+          <UsageSkeleton />
         ) : (
-          <div className="dq-muted">暂无用量数据</div>
+          <div className="dq-empty">还没有用量记录。在 DSH 里跑一轮对话，这里会出现逐天 / 逐小时统计与费用估算。</div>
         )}
       </div>
 
