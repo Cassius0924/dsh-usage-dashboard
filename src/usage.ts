@@ -8,7 +8,7 @@
  */
 import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeriodUsage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
-import { costOf, pricingInfo } from './pricing.ts'
+import { cacheSavingOf, costOf, pricingInfo } from './pricing.ts'
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n))
 
@@ -146,7 +146,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   }
   const dayMap = new Map<string, Bucket>()
   const hourMap = new Map<string, Bucket>()
-  const overall: Bucket & { reasoning: number } = { ...emptyBucket(), reasoning: 0 }
+  const overall: Bucket & { reasoning: number; cacheSavings: number } = { ...emptyBucket(), reasoning: 0, cacheSavings: 0 }
   // Per model: key `${provider}/${model}` -> totals and day/hour maps.
   const modelTotals = new Map<string, Bucket>()
   const modelDays = new Map<string, Map<string, Bucket>>()
@@ -198,6 +198,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         overall.reasoning += reasoning
         overall.total += input + output + cache
         overall.cost += cost
+        overall.cacheSavings += cacheSavingOf(time, model, cache)
         overall.calls += 1
       })
     } catch {
@@ -278,6 +279,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         total: overall.total,
         cost: overall.cost,
         calls: overall.calls,
+        cacheSavings: overall.cacheSavings,
       },
     },
   }

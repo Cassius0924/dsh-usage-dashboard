@@ -50,6 +50,12 @@ export interface UsageTotals {
   total: number
   cost: number
   calls: number
+  /**
+   * What the cache-hit tokens would have cost at cache-miss rates, minus what
+   * they actually cost — i.e. the money prefix caching saved. Folded per
+   * record so it respects each record's model and time-of-day rates.
+   */
+  cacheSavings: number
 }
 
 /** One per-day / per-hour point of a single model's series. */

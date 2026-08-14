@@ -63,6 +63,15 @@ export function ratesAt(timeMs: number, model: string): PricingRates {
   return isPeak(timeMs) ? peak : halved(peak)
 }
 
+/**
+ * What prefix caching saved on one record: the cache-hit tokens re-priced at
+ * the cache-miss rate, minus what they actually cost.
+ */
+export function cacheSavingOf(timeMs: number, model: string, cache: number): number {
+  const rates = ratesAt(timeMs, model)
+  return (cache * (rates.input - rates.cacheHit)) / 1_000_000
+}
+
 /** Estimated CNY cost of one usage record. */
 export function costOf(timeMs: number, model: string, input: number, cache: number, output: number): number {
   const rates = ratesAt(timeMs, model)

@@ -167,6 +167,52 @@ export const modelKeyOf = (m: ModelUsage): string => (m.provider !== '' ? `${m.p
 
 export const modelNameOf = (m: ModelUsage): string => (m.model !== '' ? m.model : '未知模型')
 
+/**
+ * What prefix caching is doing for the bill. Cache-hit tokens are priced at a
+ * small fraction of cache-miss tokens, so on a DSH workload this is usually the
+ * single biggest lever on cost — and it was invisible before.
+ */
+function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
+  const { totals } = props
+  const prompt = totals.input + totals.cache
+  if (prompt === 0) return <div className="dq-empty">还没有 prompt token 可统计缓存命中。</div>
+  const rate = totals.cache / prompt
+  const wouldHaveCost = totals.cost + totals.cacheSavings
+  const low = rate < 0.6
+  return (
+    <div className="dq-cache">
+      <div className="dq-cache-figures">
+        <div className="dq-stat">
+          <div className="dq-stat-label">缓存命中率</div>
+          <div className={`dq-stat-value${low ? ' dq-stat-value--warn' : ' dq-stat-value--ok'}`}>
+            {(rate * 100).toFixed(1)}%
+          </div>
+        </div>
+        <div className="dq-stat">
+          <div className="dq-stat-label">已节省费用（估算）</div>
+          <div className="dq-stat-value">¥ {fmt(totals.cacheSavings)}</div>
+        </div>
+        <div className="dq-stat">
+          <div className="dq-stat-label">若全部未命中</div>
+          <div className="dq-stat-value dq-muted-value">¥ {fmt(wouldHaveCost)}</div>
+        </div>
+      </div>
+      <div className="dq-cache-track" role="img" aria-label={`缓存命中 ${(rate * 100).toFixed(1)}%，未命中 ${((1 - rate) * 100).toFixed(1)}%`}>
+        <div className="dq-cache-fill" style={{ width: `${rate * 100}%` }} />
+      </div>
+      <div className="dq-cache-legend">
+        <span><span className="dq-legend-swatch dq-legend-swatch--hit" />缓存命中 {fmtCompact(totals.cache)}</span>
+        <span><span className="dq-legend-swatch dq-legend-swatch--miss" />未命中 {fmtCompact(totals.input)}</span>
+      </div>
+      <p className="dq-cache-foot">
+        {low
+          ? '命中率偏低：频繁改动 system prompt / 工具定义会让前缀缓存失效，把稳定内容放在对话最前面能提高命中率。'
+          : '前缀缓存把重复的 prompt 前缀按命中价计费，是这份账单上最大的省钱杠杆。'}
+      </p>
+    </div>
+  )
+}
+
 /** Which model the money actually goes to, most expensive first. */
 function ModelRanking(props: {
   models: ModelUsage[]
@@ -548,6 +594,21 @@ export function BalanceDashboard(): ReactElement {
           <UsageSkeleton />
         ) : (
           <div className="dq-empty">还没有用量记录。在 DSH 里跑一轮对话，这里会出现逐天 / 逐小时统计与费用估算。</div>
+        )}
+      </div>
+
+      <div className="dq-card">
+        <div className="dq-card-title">缓存命中与节省</div>
+        {usage !== null ? (
+          <CacheCard totals={usage.totals} />
+        ) : loadingUsage ? (
+          <div className="dq-cache-figures">
+            {[60, 96, 72].map((w, i) => (
+              <div key={i} className="dq-stat"><Skel w={w} h={11} /><Skel w={72} h={20} /></div>
+            ))}
+          </div>
+        ) : (
+          <div className="dq-empty">还没有 prompt token 可统计缓存命中。</div>
         )}
       </div>
 
