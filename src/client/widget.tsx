@@ -358,7 +358,7 @@ export function QuotaWidget(): ReactElement | null {
           <div className="dsh-quota-title">
             <span className="dsh-quota-grip" title="拖动以移动">⠇</span>
             <span className={dotClass} />
-            <span>DeepSeek 额度</span>
+            <span className="dsh-quota-name">DeepSeek 额度</span>
             {collapsed && primary !== null && (
               <span className={`dsh-quota-collapsed-total${low ? ' dsh-quota-total--low' : ''}`}>{fmt(primary.total)} {primary.currency}</span>
             )}

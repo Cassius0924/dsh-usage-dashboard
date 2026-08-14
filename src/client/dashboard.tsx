@@ -202,7 +202,7 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
       </div>
       <div className="dq-cache-legend">
         <span><span className="dq-legend-swatch dq-legend-swatch--hit" />缓存命中 {fmtCompact(totals.cache)}</span>
-        <span><span className="dq-legend-swatch dq-legend-swatch--miss" />未命中 {fmtCompact(totals.input)}</span>
+        <span><span className="dq-legend-swatch dq-legend-swatch--miss" />未命中 {fmtCompact(totals.input)}（按未命中价计费）</span>
       </div>
       <p className="dq-cache-foot">
         {low
@@ -483,6 +483,11 @@ export function BalanceDashboard(): ReactElement {
   // One canonical model order — most expensive first — shared by the ranking
   // card, the picker and the chart, so a model keeps its colour everywhere
   // instead of being coloured by the order it happened to be ticked in.
+  // Tallest bar currently on screen — the chart has no y axis, so this is the
+  // only thing giving the bars a magnitude.
+  const chartPeak = (barMode === 'daily' ? dailyBars : hourlyBars)
+    .reduce((peak, bar) => (bar.value > peak ? bar.value : peak), 0)
+
   const modelList = [...(usage?.models ?? [])].sort((a, b) => b.cost - a.cost)
   const availableModelKeys = new Set(modelList.map(modelKeyOf))
   const effectiveSelection = selectedModels.filter(k => availableModelKeys.has(k))
@@ -617,15 +622,6 @@ export function BalanceDashboard(): ReactElement {
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">官方平台</div>
-        <div className="dq-links">
-          <Link href="https://platform.deepseek.com/usage">查看额度 / 用量</Link>
-          <Link href="https://platform.deepseek.com/api_keys">生成 API Key</Link>
-          <Link href="https://status.deepseek.com">服务状态</Link>
-        </div>
-      </div>
-
-      <div className="dq-card">
         <div className="dq-card-title">DSH 用量（tokens）</div>
         {usage !== null ? (
           <>
@@ -638,6 +634,7 @@ export function BalanceDashboard(): ReactElement {
             <div className="dq-chart-block-head">
               <div className="dq-chart-title">
                 {barMode === 'daily' ? '近 30 天 · 逐天用量' : '按小时分布（0–23 点）'}
+                {chartPeak > 0 && <span className="dq-chart-peak">峰值 {fmtCompact(chartPeak)} tokens</span>}
               </div>
               <div className="dq-chart-controls">
                 <ModelPicker models={modelList} selected={effectiveSelection} colorOf={colorOf} onChange={setSelectedModels} />
@@ -740,6 +737,15 @@ export function BalanceDashboard(): ReactElement {
         ) : (
           <div className="dq-empty">还没有可归类的模型用量。</div>
         )}
+      </div>
+
+      <div className="dq-card">
+        <div className="dq-card-title">官方平台</div>
+        <div className="dq-links">
+          <Link href="https://platform.deepseek.com/usage">查看额度 / 用量</Link>
+          <Link href="https://platform.deepseek.com/api_keys">生成 API Key</Link>
+          <Link href="https://status.deepseek.com">服务状态</Link>
+        </div>
       </div>
 
       <div className="dq-card">
