@@ -5,10 +5,10 @@
  * refresh then updates it without blocking; a full-screen 加载中 only
  * appears when nothing has ever been cached.
  */
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
-import type { BalanceData, ModelUsage, PeriodUsage, UsageData } from '../contract.ts'
+import type { BalanceData, ModelUsage, PeriodUsage, PricingInfo, UsageData } from '../contract.ts'
 import { getWidgetVisible, setWidgetVisible } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
@@ -83,6 +83,68 @@ function Period(props: {
       <div className="dq-period-cost">¥ {fmt(period.cost)}</div>
       <div className="dq-period-sub">{fmtCompact(period.total)} tokens · {fmtInt(period.calls)} 次调用</div>
     </div>
+  )
+}
+
+const rate = (value: number): string => `¥${value.toLocaleString(undefined, { maximumFractionDigits: 3 })}`
+
+/** Auditable breakdown of the rates the cost estimate was computed with —
+ *  a `<details>` so it is keyboard-reachable without any extra state. */
+function PricingNote(props: { pricing: PricingInfo }): ReactElement {
+  const { pricing } = props
+  const split = pricing.splitActive
+  return (
+    <details className="dq-pricing">
+      <summary className="dq-pricing-summary">
+        计价说明
+        {split && (
+          <span className={`dq-pricing-now${pricing.inPeakNow ? ' dq-pricing-now--peak' : ''}`}>
+            当前 {pricing.inPeakNow ? '高峰时段' : '闲时'}
+          </span>
+        )}
+      </summary>
+      <div className="dq-pricing-body">
+        <table className="dq-pricing-table">
+          <thead>
+            <tr>
+              <th>模型</th>
+              <th>{split ? '时段' : '单价'}</th>
+              <th>输入·缓存命中</th>
+              <th>输入·未命中</th>
+              <th>输出</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pricing.tiers.map(tier => (
+              <Fragment key={tier.model}>
+                <tr>
+                  <td rowSpan={tier.offPeak !== null ? 2 : 1}>{tier.model}</td>
+                  <td>{split ? '高峰' : '固定'}</td>
+                  <td>{rate(tier.peak.cacheHit)}</td>
+                  <td>{rate(tier.peak.input)}</td>
+                  <td>{rate(tier.peak.output)}</td>
+                </tr>
+                {tier.offPeak !== null && (
+                  <tr>
+                    <td>闲时</td>
+                    <td>{rate(tier.offPeak.cacheHit)}</td>
+                    <td>{rate(tier.offPeak.input)}</td>
+                    <td>{rate(tier.offPeak.output)}</td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+        <p className="dq-pricing-foot">
+          单位：{pricing.currency} / 百万 tokens。
+          {split
+            ? `高峰时段为北京时间 ${pricing.peakWindows.join('、')}，其余为闲时（价格减半）；${pricing.switchDate} 之前的用量仍按旧价估算。`
+            : `${pricing.switchDate} 00:00 起改为峰谷定价（高峰 ${pricing.peakWindows.join('、')}，闲时价格减半），届时本页会按每条记录的时间自动分段计价。`}
+          未知模型按 deepseek-v4-pro 计价。
+        </p>
+      </div>
+    </details>
   )
 }
 
@@ -345,6 +407,7 @@ export function BalanceDashboard(): ReactElement {
             />
           </div>
         ) : loadingUsage ? (
+
           <div className="dq-period-grid">
             {[0, 1, 2].map(i => (
               <div key={i} className="dq-period">
@@ -355,6 +418,7 @@ export function BalanceDashboard(): ReactElement {
         ) : (
           <div className="dq-empty">还没有可统计的消耗。</div>
         )}
+        {usage !== null && <PricingNote pricing={usage.pricing} />}
       </div>
 
       <div className="dq-card">

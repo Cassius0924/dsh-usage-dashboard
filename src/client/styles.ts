@@ -48,6 +48,21 @@ export const css = `
 .dq-delta--down{color:var(--dsw-alias-state-success-primary,#1a7f37);background:rgba(45,164,78,.14)}
 .dq-delta--flat,.dq-delta--new{color:var(--dsw-alias-label-tertiary,#59636e);background:rgba(120,130,150,.14);font-weight:500}
 .dq-delta-label{font-weight:400;opacity:.8}
+.dq-pricing{margin-top:12px;border-top:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));padding-top:10px}
+.dq-pricing-summary{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dsw-alias-label-secondary,#59636e);cursor:pointer;list-style:none;width:fit-content;border-radius:6px;padding:2px 4px;margin-left:-4px}
+.dq-pricing-summary::-webkit-details-marker{display:none}
+.dq-pricing-summary::before{content:"▸";display:inline-block;font-size:10px;opacity:.7;transition:transform .15s ease}
+.dq-pricing[open] .dq-pricing-summary::before{transform:rotate(90deg)}
+.dq-pricing-summary:hover{color:var(--dsw-alias-label-primary,#1f2328)}
+.dq-pricing-summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
+.dq-pricing-now{font-size:11px;font-weight:600;padding:1px 7px;border-radius:999px;color:var(--dsw-alias-label-tertiary,#59636e);background:rgba(120,130,150,.14)}
+.dq-pricing-now--peak{color:var(--dsw-alias-state-warning-primary,#9a6700);background:rgba(191,135,0,.14)}
+.dq-pricing-body{margin-top:10px;overflow-x:auto}
+.dq-pricing-table{border-collapse:collapse;font-size:11.5px;font-variant-numeric:tabular-nums;min-width:100%}
+.dq-pricing-table th{text-align:left;font-weight:500;color:var(--dsw-alias-label-tertiary,#59636e);padding:4px 12px 4px 0;white-space:nowrap;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
+.dq-pricing-table td{padding:4px 12px 4px 0;color:var(--dsw-alias-label-primary,#1f2328);white-space:nowrap;vertical-align:top}
+.dq-pricing-table tbody tr+tr td{border-top:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.05))}
+.dq-pricing-foot{margin:8px 0 0;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary,#59636e)}
 .dq-links{display:flex;flex-wrap:wrap;gap:8px}
 .dq-link{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-state-business-primary,#0969da);text-decoration:none;font-size:13px;font-weight:500;cursor:pointer}
 .dq-link:hover{border-color:var(--dsw-alias-state-business-primary,#0969da);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.04))}

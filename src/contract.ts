@@ -95,6 +95,31 @@ export interface UsageSummary {
   lastMonthToDate: PeriodUsage
 }
 
+/** CNY per 1M tokens for one model tier. */
+export interface PricingRates {
+  cacheHit: number
+  input: number
+  output: number
+}
+
+export interface PricingTier {
+  model: string
+  peak: PricingRates
+  /** Null while flat pricing is in effect (before the peak/off-peak switch). */
+  offPeak: PricingRates | null
+}
+
+/** What the cost column was computed with, so the estimate can be audited. */
+export interface PricingInfo {
+  currency: string
+  /** Date peak/off-peak pricing takes effect. */
+  switchDate: string
+  splitActive: boolean
+  inPeakNow: boolean
+  peakWindows: string[]
+  tiers: PricingTier[]
+}
+
 export interface UsageData {
   daily: DailyUsage[]
   hourly: HourlyUsage[]
@@ -102,6 +127,7 @@ export interface UsageData {
   totals: UsageTotals
   models: ModelUsage[]
   summary: UsageSummary
+  pricing: PricingInfo
 }
 
 export interface UsageResponse {

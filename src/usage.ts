@@ -8,17 +8,9 @@
  */
 import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeriodUsage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
+import { costOf, pricingInfo } from './pricing.ts'
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n))
-
-// deepseek-v4-pro pricing, CNY per 1M tokens (pre-2026-08-17 flat pricing;
-// DeepSeek switches to peak/off-peak on 2026-08-17 — adjust when needed).
-const PRICE_INPUT_PER_M = 3
-const PRICE_CACHE_PER_M = 0.025
-const PRICE_OUTPUT_PER_M = 6
-
-const costOf = (input: number, cache: number, output: number): number =>
-  (input * PRICE_INPUT_PER_M + cache * PRICE_CACHE_PER_M + output * PRICE_OUTPUT_PER_M) / 1_000_000
 
 function errorMessage(err: unknown): string {
   return (err as { message?: string } | null)?.message ?? String(err)
@@ -160,14 +152,16 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   const modelDays = new Map<string, Map<string, Bucket>>()
   const modelHours = new Map<string, Map<string, Bucket>>()
 
-  const bump = (map: Map<string, Bucket>, key: string, input: number, output: number, cache: number): void => {
+  /** Cost is computed once per event (it depends on the model and on whether
+   *  the event landed in a peak window) and folded into every bucket. */
+  const bump = (map: Map<string, Bucket>, key: string, input: number, output: number, cache: number, cost: number): void => {
     const bucket = map.get(key) ?? emptyBucket()
     bucket.input += input
     bucket.output += output
     bucket.cache += cache
     // reasoningTokens is a subset of outputTokens; never double-count it.
     bucket.total += input + output + cache
-    bucket.cost += costOf(input, cache, output)
+    bucket.cost += cost
     bucket.calls += 1
     map.set(key, bucket)
   }
@@ -182,27 +176,28 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         const dayKey = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
         const hourKey = String(d.getHours())
         const modelKey = `${provider}/${model}`
-        bump(dayMap, dayKey, input, output, cache)
-        bump(hourMap, hourKey, input, output, cache)
-        bump(modelTotals, modelKey, input, output, cache)
+        const cost = costOf(time, model, input, cache, output)
+        bump(dayMap, dayKey, input, output, cache, cost)
+        bump(hourMap, hourKey, input, output, cache, cost)
+        bump(modelTotals, modelKey, input, output, cache, cost)
         let days = modelDays.get(modelKey)
         if (days === undefined) {
           days = new Map()
           modelDays.set(modelKey, days)
         }
-        bump(days, dayKey, input, output, cache)
+        bump(days, dayKey, input, output, cache, cost)
         let hours = modelHours.get(modelKey)
         if (hours === undefined) {
           hours = new Map()
           modelHours.set(modelKey, hours)
         }
-        bump(hours, hourKey, input, output, cache)
+        bump(hours, hourKey, input, output, cache, cost)
         overall.input += input
         overall.output += output
         overall.cache += cache
         overall.reasoning += reasoning
         overall.total += input + output + cache
-        overall.cost += costOf(input, cache, output)
+        overall.cost += cost
         overall.calls += 1
       })
     } catch {
@@ -274,6 +269,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       heatmap,
       models,
       summary: summarize(dayMap, new Date()),
+      pricing: pricingInfo(Date.now()),
       totals: {
         input: overall.input,
         output: overall.output,
