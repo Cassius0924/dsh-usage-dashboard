@@ -47,4 +47,8 @@ export const css = `
 .dq-heat-cell{width:12px;height:12px;border-radius:2px}
 .dq-muted{color:var(--dsw-alias-label-secondary,#59636e)}
 .dq-error{color:var(--dsw-alias-state-error-primary,#cf222e)}
+.dq-status-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:20px}
+.dq-status-row .dq-muted,.dq-status-row .dq-error{font-size:12px}
+.dq-refresh-btn{border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#59636e);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
+.dq-refresh-btn:hover{border-color:var(--dsw-alias-state-business-primary,#0969da);color:var(--dsw-alias-state-business-primary,#0969da)}
 `

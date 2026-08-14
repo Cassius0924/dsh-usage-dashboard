@@ -76,10 +76,10 @@ export function QuotaWidget(): ReactElement | null {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const dragRef = useRef<DragSession | null>(null)
 
-  const load = async (showLoading: boolean): Promise<void> => {
+  const load = async (showLoading: boolean, force = false): Promise<void> => {
     if (showLoading) setLoading(true)
     try {
-      const res = await fetchBalance()
+      const res = await fetchBalance(force)
       if (res.ok && res.data !== undefined) {
         setData(res.data)
         setError(null)
@@ -275,7 +275,7 @@ export function QuotaWidget(): ReactElement | null {
             )}
           </div>
           <div className="dsh-quota-actions">
-            <button className="dsh-quota-btn" type="button" title="刷新" onClick={() => { void load(true) }}>↻</button>
+            <button className="dsh-quota-btn" type="button" title="刷新" onClick={() => { void load(true, true) }}>↻</button>
             <button className="dsh-quota-btn" type="button" title={collapsed ? '展开' : '收起'} onClick={() => setCollapsed(!collapsed)}>{collapsed ? '+' : '−'}</button>
           </div>
         </div>
