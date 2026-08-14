@@ -84,6 +84,15 @@ function heatColor(level: number): string {
   return 'rgba(65,118,230,1)'
 }
 
+/** Row 0 is Sunday, matching Date#getDay(); only alternate rows are labelled
+ *  so the column stays readable at 12px cells. */
+const DOW_LABELS = ['', '一', '', '三', '', '五', '']
+
+/**
+ * Calendar heatmap with the axes it was missing: weekday labels down the left,
+ * month labels along the top (drawn where a column starts a new month) and a
+ * 少→多 scale legend, so a cell can actually be located in time.
+ */
 export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
   const { data } = props
   let max = 0
@@ -97,21 +106,63 @@ export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
   for (let i = 0; i < firstDow; i++) cells.push(null)
   for (const datum of data) cells.push(datum)
   while (cells.length % 7 !== 0) cells.push(null)
+
+  const weeks: Array<Array<HeatDatum | null>> = []
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7))
+
+  // Label a column with its month when it is the first column of that month.
+  let lastMonth = ''
+  const monthLabels = weeks.map(week => {
+    const first = week.find(cell => cell !== null)
+    if (first === undefined || first === null) return ''
+    const month = first.date.slice(0, 7)
+    if (month === lastMonth) return ''
+    lastMonth = month
+    return `${Number(first.date.slice(5, 7))}月`
+  })
+
+  const levelOf = (total: number): number => {
+    if (total <= 0) return 0
+    const r = max > 0 ? total / max : 0
+    return r < 0.25 ? 1 : r < 0.5 ? 2 : r < 0.75 ? 3 : 4
+  }
+
   return (
-    <div className="dq-heatmap">
-      {cells.map((datum, i) => {
-        if (datum === null) return <div key={`p${i}`} className="dq-heat-cell" style={{ background: 'transparent' }} />
-        const r = max > 0 ? datum.total / max : 0
-        const level = datum.total > 0 ? (r < 0.25 ? 1 : r < 0.5 ? 2 : r < 0.75 ? 3 : 4) : 0
-        return (
-          <div
-            key={i}
-            className="dq-heat-cell"
-            style={{ background: heatColor(level) }}
-            title={`${datum.date} · ${datum.total.toLocaleString()} tokens · ¥${datum.cost.toFixed(2)} · ${datum.calls} 次调用`}
-          />
-        )
-      })}
+    <div className="dq-heat">
+      <div className="dq-heat-grid">
+        <div className="dq-heat-dows" aria-hidden="true">
+          {DOW_LABELS.map((label, i) => <div key={i} className="dq-heat-dow">{label}</div>)}
+        </div>
+        <div className="dq-heat-cols">
+          <div className="dq-heat-months" aria-hidden="true">
+            {monthLabels.map((label, i) => <div key={i} className="dq-heat-month">{label}</div>)}
+          </div>
+          <div className="dq-heatmap">
+            {weeks.map((week, w) => (
+              <div key={w} className="dq-heat-week">
+                {week.map((datum, d) => {
+                  if (datum === null) return <div key={d} className="dq-heat-cell dq-heat-cell--pad" />
+                  return (
+                    <div
+                      key={d}
+                      className="dq-heat-cell"
+                      style={{ background: heatColor(levelOf(datum.total)) }}
+                      title={`${datum.date} · ${datum.total.toLocaleString()} tokens · ¥${datum.cost.toFixed(2)} · ${datum.calls} 次调用`}
+                    />
+                  )
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+      <div className="dq-heat-scale">
+        <span>少</span>
+        {[0, 1, 2, 3, 4].map(level => (
+          <span key={level} className="dq-heat-cell" style={{ background: heatColor(level) }} />
+        ))}
+        <span>多</span>
+      </div>
     </div>
   )
 }
