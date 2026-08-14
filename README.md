@@ -31,7 +31,7 @@
 | --- | --- |
 | 账户余额 | DeepSeek API `GET /user/balance`（通过 `credentials` 服务读取 `DEEPSEEK_API_KEY`） |
 | token 用量 | 遍历 DSH 会话日志（`sessionPersistence`），聚合每个 `assistant/message` 事件的 `usage` |
-| 消耗费用 | 按 deepseek-v4-pro 单价估算（见下文「费用估算」） |
+| 消耗费用 | 按 deepseek-v4-pro 单价估算 |
 
 Host 侧注册了两个 Package 私有 RPC 处理器：
 
@@ -39,18 +39,6 @@ Host 侧注册了两个 Package 私有 RPC 处理器：
 - `deepseek-usage` —— 返回逐天/逐小时/热力图聚合结果与费用估算。
 
 Client 侧通过 `host.call(...)` 调用它们，并渲染 UI（纯 `React.createElement`，无 JSX/打包器）。
-
-## 费用估算
-
-费用按 **deepseek-v4-pro** 的单价（元 / 百万 tokens）估算：
-
-| 项目 | 单价 |
-| --- | --- |
-| 输入（缓存未命中） | ¥3 |
-| 输入（缓存命中） | ¥0.025 |
-| 输出（含 reasoning tokens） | ¥6 |
-
-> ⚠️ 2026-08-17 起 DeepSeek 改为**峰谷定价**（高峰为空闲的两倍），此处的单价是生效前的现价，且为**估算值**，不保证与账单完全一致。如需按峰谷精确计费，可在 `host.js` 里调整 `PRICE_*_PER_M` 常量。
 
 ## 安装 / 使用
 
