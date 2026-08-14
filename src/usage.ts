@@ -6,7 +6,7 @@
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, UsageData, UsageResponse } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeriodUsage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n))
@@ -79,6 +79,38 @@ interface Bucket {
 }
 
 const emptyBucket = (): Bucket => ({ input: 0, output: 0, cache: 0, total: 0, cost: 0, calls: 0 })
+
+const dayKeyOf = (d: Date): string => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+
+/**
+ * Roll the per-day buckets up into the windows the dashboard's summary card
+ * shows. Everything is keyed by local date, matching how the buckets were
+ * filled, so "today" means the user's today.
+ */
+function summarize(dayMap: Map<string, Bucket>, now: Date): UsageSummary {
+  const sum = (matches: (key: string) => boolean): PeriodUsage => {
+    const acc: PeriodUsage = { total: 0, cost: 0, calls: 0 }
+    for (const [key, bucket] of dayMap) {
+      if (!matches(key)) continue
+      acc.total += bucket.total
+      acc.cost += bucket.cost
+      acc.calls += bucket.calls
+    }
+    return acc
+  }
+  const todayKey = dayKeyOf(now)
+  const yesterdayKey = dayKeyOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1))
+  const monthPrefix = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-`
+  const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+  const lastMonthPrefix = `${lastMonth.getFullYear()}-${pad2(lastMonth.getMonth() + 1)}-`
+  const dayOfMonth = now.getDate()
+  return {
+    today: sum(key => key === todayKey),
+    yesterday: sum(key => key === yesterdayKey),
+    month: sum(key => key.startsWith(monthPrefix)),
+    lastMonthToDate: sum(key => key.startsWith(lastMonthPrefix) && Number(key.slice(8)) <= dayOfMonth),
+  }
+}
 
 /**
  * Fold usage out of one session's event log. The model for every
@@ -241,6 +273,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       hourly,
       heatmap,
       models,
+      summary: summarize(dayMap, new Date()),
       totals: {
         input: overall.input,
         output: overall.output,

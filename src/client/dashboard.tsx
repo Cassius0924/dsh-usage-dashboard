@@ -8,7 +8,7 @@
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
-import type { BalanceData, ModelUsage, UsageData } from '../contract.ts'
+import type { BalanceData, ModelUsage, PeriodUsage, UsageData } from '../contract.ts'
 import { getWidgetVisible, setWidgetVisible } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
@@ -32,7 +32,7 @@ function UsageSkeleton(): ReactElement {
   return (
     <>
       <div className="dq-usage-totals">
-        {[88, 104, 44, 44, 62, 62].map((w, i) => (
+        {[44, 44, 62, 62].map((w, i) => (
           <div key={i} className="dq-stat"><Skel w={w} h={11} /><Skel w={w > 70 ? 84 : 56} h={20} /></div>
         ))}
       </div>
@@ -43,6 +43,46 @@ function UsageSkeleton(): ReactElement {
         ))}
       </div>
     </>
+  )
+}
+
+/** Percentage chip comparing a window against the one before it. */
+function Delta(props: { current: number; previous: number; label: string }): ReactElement | null {
+  const { current, previous, label } = props
+  if (previous <= 0) {
+    if (current <= 0) return null
+    return <span className="dq-delta dq-delta--new" title={`${label}没有用量，无从对比`}>无对比</span>
+  }
+  const percent = Math.round(((current - previous) / previous) * 100)
+  const title = `${label} ¥${fmt(previous)}`
+  if (percent === 0) return <span className="dq-delta dq-delta--flat" title={title}>持平</span>
+  const up = percent > 0
+  return (
+    <span className={`dq-delta ${up ? 'dq-delta--up' : 'dq-delta--down'}`} title={title}>
+      {up ? '↑' : '↓'}{Math.abs(percent)}% <span className="dq-delta-label">{label}</span>
+    </span>
+  )
+}
+
+/** One window of the 消耗概览 card: cost headline, volume underneath. */
+function Period(props: {
+  label: string
+  period: PeriodUsage
+  previous?: PeriodUsage
+  compare?: string
+}): ReactElement {
+  const { period, previous, compare } = props
+  return (
+    <div className="dq-period">
+      <div className="dq-period-head">
+        <span className="dq-period-label">{props.label}</span>
+        {previous !== undefined && compare !== undefined && (
+          <Delta current={period.cost} previous={previous.cost} label={compare} />
+        )}
+      </div>
+      <div className="dq-period-cost">¥ {fmt(period.cost)}</div>
+      <div className="dq-period-sub">{fmtCompact(period.total)} tokens · {fmtInt(period.calls)} 次调用</div>
+    </div>
   )
 }
 
@@ -294,6 +334,30 @@ export function BalanceDashboard(): ReactElement {
       </div>
 
       <div className="dq-card">
+        <div className="dq-card-title">消耗概览（费用为估算）</div>
+        {usage !== null ? (
+          <div className="dq-period-grid">
+            <Period label="今日" period={usage.summary.today} previous={usage.summary.yesterday} compare="较昨日" />
+            <Period label="本月" period={usage.summary.month} previous={usage.summary.lastMonthToDate} compare="较上月同期" />
+            <Period
+              label="累计"
+              period={{ total: usage.totals.total, cost: usage.totals.cost, calls: usage.totals.calls }}
+            />
+          </div>
+        ) : loadingUsage ? (
+          <div className="dq-period-grid">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="dq-period">
+                <Skel w={40} h={11} /><Skel w={104} h={24} /><Skel w={132} h={11} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dq-empty">还没有可统计的消耗。</div>
+        )}
+      </div>
+
+      <div className="dq-card">
         <div className="dq-card-title">官方平台</div>
         <div className="dq-links">
           <Link href="https://platform.deepseek.com/usage">查看额度 / 用量</Link>
@@ -307,8 +371,6 @@ export function BalanceDashboard(): ReactElement {
         {usage !== null ? (
           <>
             <div className="dq-usage-totals">
-              <Stat label="累计 tokens"><div className="dq-stat-value">{fmtCompact(usage.totals.total)}</div></Stat>
-              <Stat label="消耗费用（估算）"><div className="dq-stat-value">¥ {fmt(usage.totals.cost)}</div></Stat>
               <Stat label="输入"><div className="dq-stat-value">{fmtCompact(usage.totals.input)}</div></Stat>
               <Stat label="输出"><div className="dq-stat-value">{fmtCompact(usage.totals.output)}</div></Stat>
               <Stat label="缓存命中"><div className="dq-stat-value">{fmtCompact(usage.totals.cache)}</div></Stat>
