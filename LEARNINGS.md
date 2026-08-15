@@ -1,6 +1,7 @@
 # LEARNINGS — 踩过的坑
 
 - **月度预算预测要按北京时间自然月切边界**；直接用浏览器本地时区，同一份数据在不同时区会得到不同月底预测。
+- **新鲜度必须展示缓存自己的 `at`，不能拿组件挂载时间冒充更新时间**；强刷失败时也必须保留最后成功时间戳。
 - **`pnpm run build` 会先跑依赖检查并因 `ERR_PNPM_IGNORED_BUILDS` 失败**（pnpm 11）。
   修法：仓库根 `pnpm-workspace.yaml` 写 `allowBuilds: { esbuild: true }`。
   pnpm 11 **不再读** `package.json` 里的 `pnpm` 字段，`.npmrc` 的 `only-built-dependencies[]` 也无效。

@@ -6,9 +6,10 @@
  * appears when nothing has ever been cached.
  */
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
-import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
+import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
+import { syncStatusText, type SyncState } from './freshness.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageData } from '../contract.ts'
 import { lowBalanceStore, monthlyBudgetStore, widgetVisibleStore } from './store.ts'
 
@@ -466,6 +467,7 @@ export function BalanceDashboard(): ReactElement {
   // data has been fetched before (stale-while-revalidate).
   const cachedBalance = getCachedBalance()
   const cachedUsage = getCachedUsage()
+  const cachedUsageAt = getCachedUsageAt()
   const [balance, setBalance] = useState<BalanceData | null>(cachedBalance?.data ?? null)
   const [usage, setUsage] = useState<UsageData | null>(cachedUsage?.data ?? null)
   const [error, setError] = useState<string | null>(null)
@@ -476,6 +478,9 @@ export function BalanceDashboard(): ReactElement {
   const [loadingBalance, setLoadingBalance] = useState(cachedBalance === null)
   const [loadingUsage, setLoadingUsage] = useState(cachedUsage === null)
   const [refreshing, setRefreshing] = useState(false)
+  const [usageUpdatedAt, setUsageUpdatedAt] = useState<number | null>(cachedUsageAt)
+  const [syncState, setSyncState] = useState<SyncState>(cachedUsageAt === null ? 'syncing' : 'cached')
+  const [freshnessNow, setFreshnessNow] = useState(Date.now())
   const hadDataRef = useRef(cachedBalance !== null || cachedUsage !== null)
   const [widgetOn, setWidgetOn] = useState(widgetVisibleStore.get())
   const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
@@ -489,9 +494,11 @@ export function BalanceDashboard(): ReactElement {
   /** Load both resources; each resolves to null on success or to its error
    *  string on failure, so a partial failure can name the half that broke. */
   const load = async (force: boolean): Promise<void> => {
+    const usageAtBefore = getCachedUsageAt()
     setError(null)
     setNotice(null)
     setRefreshing(true)
+    setSyncState('syncing')
     const balanceTask = fetchBalance(force).then(res => {
       if (res.ok && res.data !== undefined) {
         setBalance(res.data)
@@ -506,6 +513,10 @@ export function BalanceDashboard(): ReactElement {
     const usageTask = fetchUsage(force).then(res => {
       if (res.ok && res.data !== undefined) {
         setUsage(res.data)
+        const updatedAt = getCachedUsageAt()
+        setUsageUpdatedAt(updatedAt)
+        setFreshnessNow(Date.now())
+        setSyncState(updatedAt !== null && updatedAt !== usageAtBefore ? 'fresh' : 'cached')
         hadDataRef.current = true
         return null
       }
@@ -516,6 +527,12 @@ export function BalanceDashboard(): ReactElement {
     })
     const [balanceError, usageError] = await Promise.all([balanceTask, usageTask])
     setRefreshing(false)
+    if (usageError !== null) {
+      const fallbackAt = getCachedUsageAt()
+      setUsageUpdatedAt(fallbackAt)
+      setFreshnessNow(Date.now())
+      setSyncState(fallbackAt === null ? 'error' : 'fallback')
+    }
     if (balanceError !== null && usageError !== null) {
       // Nothing came back at all: an error only when there is nothing to show.
       if (hadDataRef.current) setNotice(`刷新失败，正在展示缓存数据（${balanceError}）`)
@@ -530,6 +547,11 @@ export function BalanceDashboard(): ReactElement {
   useEffect(() => {
     void load(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setFreshnessNow(Date.now()), 30_000)
+    return () => window.clearInterval(timer)
   }, [])
 
   const toggle = (): void => {
@@ -627,9 +649,18 @@ export function BalanceDashboard(): ReactElement {
   return (
     <div className="dq-balance">
       <div className="dq-status-row">
-        <div>
-          {(loadingBalance || loadingUsage) && <span className="dq-muted">加载中…</span>}
-          {!loadingBalance && !loadingUsage && refreshing && <span className="dq-muted">更新中…</span>}
+        <div className="dq-status-messages">
+          <span
+            className={`dq-sync dq-sync--${syncState}`}
+            role="status"
+            aria-live="polite"
+            title={usageUpdatedAt === null
+              ? '还没有成功同步过用量数据'
+              : `用量数据时间：${new Date(usageUpdatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`}
+          >
+            <span className="dq-sync-dot" aria-hidden="true" />
+            {syncStatusText(syncState, usageUpdatedAt, freshnessNow)}
+          </span>
           {notice !== null && <span className="dq-warn">{notice}</span>}
           {error !== null && <span className="dq-error">{error}</span>}
         </div>

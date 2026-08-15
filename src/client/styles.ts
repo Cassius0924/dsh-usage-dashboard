@@ -202,9 +202,19 @@ export const css = `
 .dq-skel-bars{display:flex;align-items:flex-end;gap:2px;width:100%;height:120px;margin-top:10px}
 .dq-skel-bar{flex:1 1 0;min-width:0;border-radius:2px 2px 0 0}
 @keyframes dq-shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
-@media (prefers-reduced-motion:reduce){.dq-skel{animation:none}.dq-refresh-icon--spin{animation:none}}
+@media (prefers-reduced-motion:reduce){.dq-skel{animation:none}.dq-refresh-icon--spin,.dq-sync--syncing .dq-sync-dot{animation:none}}
 .dq-status-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:20px}
-.dq-status-row .dq-muted,.dq-status-row .dq-error{font-size:12px}
+.dq-status-messages{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
+.dq-status-row .dq-warn,.dq-status-row .dq-error{font-size:12px;line-height:1.45}
+.dq-sync{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--dsw-alias-label-secondary,#59636e);font-variant-numeric:tabular-nums}
+.dq-sync-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--dsw-alias-label-tertiary,#8c959f)}
+.dq-sync--fresh .dq-sync-dot{background:var(--dsw-alias-state-success-primary,#2da44e)}
+.dq-sync--syncing .dq-sync-dot{background:var(--dsw-alias-state-business-primary,#4176e6);animation:dq-sync-pulse 1.2s ease-in-out infinite}
+.dq-sync--fallback{color:var(--dsw-alias-state-warning-primary,#9a6700)}
+.dq-sync--fallback .dq-sync-dot{background:var(--dsw-alias-state-warning-primary,#bf8700)}
+.dq-sync--error{color:var(--dsw-alias-state-error-primary,#cf222e)}
+.dq-sync--error .dq-sync-dot{background:var(--dsw-alias-state-error-primary,#cf222e)}
+@keyframes dq-sync-pulse{50%{opacity:.35;transform:scale(.8)}}
 .dq-refresh-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#59636e);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer;transition:border-color .15s ease,color .15s ease}
 .dq-refresh-btn:hover:not(:disabled){border-color:var(--dsw-alias-state-business-primary,#0969da);color:var(--dsw-alias-state-business-primary,#0969da)}
 .dq-refresh-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
