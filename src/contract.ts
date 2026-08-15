@@ -175,6 +175,22 @@ export interface UsageCoverage {
   latestAt: number | null
 }
 
+export const USAGE_WINDOW_DAYS = [7, 30, 90, 365] as const
+export type UsageWindowDays = (typeof USAGE_WINDOW_DAYS)[number]
+
+/** One internally consistent view of the same local logs over a calendar window. */
+export interface UsageWindow {
+  days: UsageWindowDays
+  daily: DailyUsage[]
+  hourly: HourlyUsage[]
+  totals: UsageTotals
+  models: ModelUsage[]
+  /** Most expensive sessions inside this window, capped at SESSION_TOP_N. */
+  sessions: SessionCost[]
+  /** All sessions that contributed usage inside this window. */
+  sessionCount: number
+}
+
 export interface UsageData {
   daily: DailyUsage[]
   hourly: HourlyUsage[]
@@ -189,6 +205,7 @@ export interface UsageData {
   /** How many sessions contributed usage in total. */
   sessionCount: number
   coverage: UsageCoverage
+  windows: UsageWindow[]
 }
 
 export interface UsageResponse {

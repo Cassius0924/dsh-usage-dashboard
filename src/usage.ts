@@ -6,7 +6,8 @@
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageCoverage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
+import { USAGE_WINDOW_DAYS } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageCoverage, UsageData, UsageResponse, UsageSummary, UsageWindowDays } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra, isPeak, pricingInfo } from './pricing.ts'
 
@@ -71,6 +72,22 @@ interface Bucket {
 }
 
 const emptyBucket = (): Bucket => ({ input: 0, output: 0, cache: 0, total: 0, cost: 0, calls: 0 })
+
+type OverallBucket = Bucket & { reasoning: number; cacheSavings: number }
+const emptyOverall = (): OverallBucket => ({ ...emptyBucket(), reasoning: 0, cacheSavings: 0 })
+
+interface WindowAccumulator {
+  days: UsageWindowDays
+  startKey: string
+  endKey: string
+  dayMap: Map<string, Bucket>
+  hourMap: Map<string, Bucket>
+  overall: OverallBucket
+  modelTotals: Map<string, Bucket>
+  modelDays: Map<string, Map<string, Bucket>>
+  modelHours: Map<string, Map<string, Bucket>>
+  sessions: SessionCost[]
+}
 
 /** How many sessions the ranking keeps; the rest are summarised by count. */
 const SESSION_TOP_N = 6
@@ -174,7 +191,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   }
   const dayMap = new Map<string, Bucket>()
   const hourMap = new Map<string, Bucket>()
-  const overall: Bucket & { reasoning: number; cacheSavings: number } = { ...emptyBucket(), reasoning: 0, cacheSavings: 0 }
+  const overall = emptyOverall()
   // Per model: key `${provider}/${model}` -> totals and day/hour maps.
   const modelTotals = new Map<string, Bucket>()
   const modelDays = new Map<string, Map<string, Bucket>>()
@@ -198,6 +215,21 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     offPeakEraCost: 0,
   }
 
+  const now = new Date(nowMs)
+  const dateBefore = (days: number): Date => new Date(now.getFullYear(), now.getMonth(), now.getDate() - days)
+  const windowAggregates: WindowAccumulator[] = USAGE_WINDOW_DAYS.map(days => ({
+    days,
+    startKey: dayKeyOf(dateBefore(days - 1)),
+    endKey: dayKeyOf(now),
+    dayMap: new Map(),
+    hourMap: new Map(),
+    overall: emptyOverall(),
+    modelTotals: new Map(),
+    modelDays: new Map(),
+    modelHours: new Map(),
+    sessions: [],
+  }))
+
   /** Cost is computed once per event (it depends on the model and on whether
    *  the event landed in a peak window) and folded into every bucket. */
   const bump = (map: Map<string, Bucket>, key: string, input: number, output: number, cache: number, cost: number): void => {
@@ -212,6 +244,59 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     map.set(key, bucket)
   }
 
+  const bumpOverall = (
+    bucket: OverallBucket,
+    input: number,
+    output: number,
+    cache: number,
+    reasoning: number,
+    cost: number,
+    cacheSavings: number,
+  ): void => {
+    bucket.input += input
+    bucket.output += output
+    bucket.cache += cache
+    bucket.reasoning += reasoning
+    bucket.total += input + output + cache
+    bucket.cost += cost
+    bucket.cacheSavings += cacheSavings
+    bucket.calls += 1
+  }
+
+  const bumpModel = (
+    totals: Map<string, Bucket>,
+    days: Map<string, Map<string, Bucket>>,
+    hours: Map<string, Map<string, Bucket>>,
+    modelKey: string,
+    dayKey: string,
+    hourKey: string,
+    input: number,
+    output: number,
+    cache: number,
+    cost: number,
+  ): void => {
+    bump(totals, modelKey, input, output, cache, cost)
+    let dayBuckets = days.get(modelKey)
+    if (dayBuckets === undefined) {
+      dayBuckets = new Map()
+      days.set(modelKey, dayBuckets)
+    }
+    bump(dayBuckets, dayKey, input, output, cache, cost)
+    let hourBuckets = hours.get(modelKey)
+    if (hourBuckets === undefined) {
+      hourBuckets = new Map()
+      hours.set(modelKey, hourBuckets)
+    }
+    bump(hourBuckets, hourKey, input, output, cache, cost)
+  }
+
+  const bumpSession = (session: SessionCost, time: number, total: number, cost: number): void => {
+    session.total += total
+    session.cost += cost
+    session.calls += 1
+    if (time > session.lastActive) session.lastActive = time
+  }
+
   const sessionIds = headers
     .map(header => header.id ?? header.sessionId)
     .filter((sid): sid is string => sid !== undefined && sid !== '')
@@ -222,6 +307,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       const { events } = await persistence.readFrom(sid, 0)
       coverage.scannedSessions += 1
       const session: SessionCost = { id: sid, title: '', total: 0, cost: 0, calls: 0, lastActive: 0 }
+      const windowSessions = windowAggregates.map((): SessionCost => ({ id: sid, title: '', total: 0, cost: 0, calls: 0, lastActive: 0 }))
       const scanned = addUsageEvent(events, (time, input, output, cache, reasoning, provider, model) => {
         if (coverage.earliestAt === null || time < coverage.earliestAt) coverage.earliestAt = time
         if (coverage.latestAt === null || time > coverage.latestAt) coverage.latestAt = time
@@ -230,45 +316,41 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         const hourKey = String(d.getHours())
         const modelKey = `${provider}/${model}`
         const cost = costOf(time, model, input, cache, output)
+        const cacheSavings = cacheSavingOf(time, model, cache)
+        const eventTotal = input + output + cache
         bump(dayMap, dayKey, input, output, cache, cost)
         bump(hourMap, hourKey, input, output, cache, cost)
-        bump(modelTotals, modelKey, input, output, cache, cost)
-        let days = modelDays.get(modelKey)
-        if (days === undefined) {
-          days = new Map()
-          modelDays.set(modelKey, days)
+        bumpModel(modelTotals, modelDays, modelHours, modelKey, dayKey, hourKey, input, output, cache, cost)
+        bumpOverall(overall, input, output, cache, reasoning, cost, cacheSavings)
+        bumpSession(session, time, eventTotal, cost)
+        for (let i = 0; i < windowAggregates.length; i++) {
+          const aggregate = windowAggregates[i]
+          if (dayKey < aggregate.startKey || dayKey > aggregate.endKey) continue
+          bump(aggregate.dayMap, dayKey, input, output, cache, cost)
+          bump(aggregate.hourMap, hourKey, input, output, cache, cost)
+          bumpModel(aggregate.modelTotals, aggregate.modelDays, aggregate.modelHours, modelKey, dayKey, hourKey, input, output, cache, cost)
+          bumpOverall(aggregate.overall, input, output, cache, reasoning, cost, cacheSavings)
+          bumpSession(windowSessions[i], time, eventTotal, cost)
         }
-        bump(days, dayKey, input, output, cache, cost)
-        let hours = modelHours.get(modelKey)
-        if (hours === undefined) {
-          hours = new Map()
-          modelHours.set(modelKey, hours)
-        }
-        bump(hours, hourKey, input, output, cache, cost)
-        overall.input += input
-        overall.output += output
-        overall.cache += cache
-        overall.reasoning += reasoning
-        overall.total += input + output + cache
-        overall.cost += cost
-        overall.cacheSavings += cacheSavingOf(time, model, cache)
-        session.total += input + output + cache
-        session.cost += cost
-        session.calls += 1
-        if (time > session.lastActive) session.lastActive = time
         const window = isPeak(time) ? peakSplit.peak : peakSplit.offPeak
-        window.total += input + output + cache
+        window.total += eventTotal
         window.cost += cost
         window.calls += 1
         peakSplit.peakEraCost += costUnderPeakEra(time, model, input, cache, output)
         peakSplit.offPeakEraCost += costUnderPeakEra(time, model, input, cache, output, true)
-        overall.calls += 1
       })
       coverage.usageRecords += scanned.usageRecords
       coverage.skippedRecords += scanned.skippedRecords
       if (session.calls > 0) {
-        session.title = titleOf(events, sid)
+        const title = titleOf(events, sid)
+        session.title = title
         sessions.push(session)
+        for (let i = 0; i < windowAggregates.length; i++) {
+          const windowSession = windowSessions[i]
+          if (windowSession.calls === 0) continue
+          windowSession.title = title
+          windowAggregates[i].sessions.push(windowSession)
+        }
       }
     } catch {
       // One broken session log must not sink the whole dashboard.
@@ -276,63 +358,81 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     }
   }
 
-  const daily: UsageData['daily'] = []
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(nowMs - i * 86_400_000)
-    const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-    const b = dayMap.get(key) ?? emptyBucket()
-    daily.push({ date: key, input: b.input, output: b.output, cache: b.cache, total: b.total, cost: b.cost, calls: b.calls })
+  const makeDaily = (map: Map<string, Bucket>, count: number): UsageData['daily'] => {
+    const result: UsageData['daily'] = []
+    for (let i = count - 1; i >= 0; i--) {
+      const key = dayKeyOf(dateBefore(i))
+      const b = map.get(key) ?? emptyBucket()
+      result.push({ date: key, input: b.input, output: b.output, cache: b.cache, total: b.total, cost: b.cost, calls: b.calls })
+    }
+    return result
   }
 
-  const hourly: UsageData['hourly'] = []
-  for (let i = 0; i < 24; i++) {
-    const b = hourMap.get(String(i)) ?? emptyBucket()
-    hourly.push({ hour: i, total: b.total, cost: b.cost, calls: b.calls })
+  const makeHourly = (map: Map<string, Bucket>): UsageData['hourly'] => {
+    const result: UsageData['hourly'] = []
+    for (let i = 0; i < 24; i++) {
+      const b = map.get(String(i)) ?? emptyBucket()
+      result.push({ hour: i, total: b.total, cost: b.cost, calls: b.calls })
+    }
+    return result
   }
+
+  const makeModels = (
+    totals: Map<string, Bucket>,
+    daysByModel: Map<string, Map<string, Bucket>>,
+    hoursByModel: Map<string, Map<string, Bucket>>,
+    dayCount: number,
+  ): ModelUsage[] => {
+    const result: ModelUsage[] = []
+    for (const [modelKey, bucket] of totals) {
+      const slash = modelKey.indexOf('/')
+      const provider = slash < 0 ? '' : modelKey.slice(0, slash)
+      const model = slash < 0 ? modelKey : modelKey.slice(slash + 1)
+      const days = daysByModel.get(modelKey)
+      const hours = hoursByModel.get(modelKey)
+      const daily: ModelSeriesPoint[] = makeDaily(days ?? new Map(), dayCount)
+        .map(point => ({ total: point.total, cost: point.cost, calls: point.calls }))
+      const hourly: ModelSeriesPoint[] = makeHourly(hours ?? new Map())
+        .map(point => ({ total: point.total, cost: point.cost, calls: point.calls }))
+      result.push({
+        provider,
+        model,
+        input: bucket.input,
+        output: bucket.output,
+        cache: bucket.cache,
+        total: bucket.total,
+        cost: bucket.cost,
+        calls: bucket.calls,
+        daily,
+        hourly,
+      })
+    }
+    result.sort((a, b) => b.total - a.total)
+    return result
+  }
+
+  const daily = makeDaily(dayMap, 30)
+  const hourly = makeHourly(hourMap)
 
   // 52 full weeks (364 days) rather than a calendar year, so the grid is
   // always a whole number of week-columns and never carries an orphan day.
   const heatmap: UsageData['heatmap'] = []
   for (let i = 363; i >= 0; i--) {
-    const d = new Date(nowMs - i * 86_400_000)
-    const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+    const key = dayKeyOf(dateBefore(i))
     const b = dayMap.get(key) ?? emptyBucket()
     heatmap.push({ date: key, total: b.total, cost: b.cost, calls: b.calls })
   }
 
-  const models: ModelUsage[] = []
-  for (const [modelKey, bucket] of modelTotals) {
-    const slash = modelKey.indexOf('/')
-    const provider = slash < 0 ? '' : modelKey.slice(0, slash)
-    const model = slash < 0 ? modelKey : modelKey.slice(slash + 1)
-    const days = modelDays.get(modelKey)
-    const hours = modelHours.get(modelKey)
-    const daily: ModelSeriesPoint[] = []
-    for (let i = 29; i >= 0; i--) {
-      const d = new Date(nowMs - i * 86_400_000)
-      const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
-      const b = days?.get(key) ?? emptyBucket()
-      daily.push({ total: b.total, cost: b.cost, calls: b.calls })
-    }
-    const hourly: ModelSeriesPoint[] = []
-    for (let i = 0; i < 24; i++) {
-      const b = hours?.get(String(i)) ?? emptyBucket()
-      hourly.push({ total: b.total, cost: b.cost, calls: b.calls })
-    }
-    models.push({
-      provider,
-      model,
-      input: bucket.input,
-      output: bucket.output,
-      cache: bucket.cache,
-      total: bucket.total,
-      cost: bucket.cost,
-      calls: bucket.calls,
-      daily,
-      hourly,
-    })
-  }
-  models.sort((a, b) => b.total - a.total)
+  const models = makeModels(modelTotals, modelDays, modelHours, 30)
+  const windows = windowAggregates.map(aggregate => ({
+    days: aggregate.days,
+    daily: makeDaily(aggregate.dayMap, aggregate.days),
+    hourly: makeHourly(aggregate.hourMap),
+    totals: { ...aggregate.overall },
+    models: makeModels(aggregate.modelTotals, aggregate.modelDays, aggregate.modelHours, aggregate.days),
+    sessions: [...aggregate.sessions].sort((a, b) => b.cost - a.cost).slice(0, SESSION_TOP_N),
+    sessionCount: aggregate.sessions.length,
+  }))
 
   return {
     ok: true,
@@ -347,6 +447,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       sessions: [...sessions].sort((a, b) => b.cost - a.cost).slice(0, SESSION_TOP_N),
       sessionCount: sessions.length,
       coverage,
+      windows,
       totals: {
         input: overall.input,
         output: overall.output,

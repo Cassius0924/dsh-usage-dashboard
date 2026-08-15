@@ -6,13 +6,14 @@
  * appears when nothing has ever been cached.
  */
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { USAGE_WINDOW_DAYS } from '../contract.ts'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
-import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData } from '../contract.ts'
-import { lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
+import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
+import { lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
 function Skel(props: { w: number; h: number }): ReactElement {
@@ -323,7 +324,7 @@ function ExportMenu(props: { usage: UsageData }): ReactElement {
         className={`dq-export-btn${done ? ' dq-export-btn--done' : ''}`}
         aria-haspopup="true"
         aria-expanded={open}
-        title="导出本机 DSH 会话日志聚合出的用量数据"
+        title="导出全部本机 DSH 会话日志数据（不受统计周期影响）"
         onClick={() => setOpen(value => !value)}
       >
         {done ? '已导出' : '导出'}
@@ -622,6 +623,28 @@ function ModelPicker(props: {
   )
 }
 
+const windowName = (days: UsageWindowDays): string => days === 365 ? '近 1 年' : `近 ${days} 天`
+
+/** One range choice controls every metric whose title carries that range. */
+function UsageWindowPicker(props: { value: UsageWindowDays; onChange: (days: UsageWindowDays) => void }): ReactElement {
+  return (
+    <div className="dq-window-switch" role="group" aria-label="统计周期">
+      {USAGE_WINDOW_DAYS.map(days => (
+        <button
+          key={days}
+          type="button"
+          className={`dq-window-btn${props.value === days ? ' dq-window-btn--on' : ''}`}
+          aria-pressed={props.value === days}
+          title={`查看${windowName(days)}的用量与排行`}
+          onClick={() => props.onChange(days)}
+        >
+          {days === 365 ? '1 年' : `${days} 天`}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function BalanceDashboard(): ReactElement {
   // Seed state from the cache so the tab never waits on the network when
   // data has been fetched before (stale-while-revalidate).
@@ -647,6 +670,7 @@ export function BalanceDashboard(): ReactElement {
   const [monthlyBudget, setMonthlyBudget] = useState(monthlyBudgetStore.get())
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
   const [selectedModels, setSelectedModels] = useState<string[]>([])
+  const [windowDays, setWindowDays] = useState<UsageWindowDays>(usageWindowStore.get())
   const budgetInputRef = useRef<HTMLInputElement | null>(null)
 
   // The full dashboard and the floating summary should never compete for the
@@ -738,6 +762,11 @@ export function BalanceDashboard(): ReactElement {
     monthlyBudgetStore.set(value)
   }
 
+  const changeWindowDays = (value: UsageWindowDays): void => {
+    setWindowDays(value)
+    usageWindowStore.set(value)
+  }
+
   const primary = balance !== null && balance.balances.length > 0 ? balance.balances[0] : null
 
   // Runway: balance divided by the last 7 calendar days' average spend. Idle
@@ -757,12 +786,15 @@ export function BalanceDashboard(): ReactElement {
     ? `近 ${recentDays.length || 7} 天没有用量，无法估算`
     : `按近 ${recentDays.length} 天日均 ¥${fmt(avgDailyCost)} 估算（含无用量的日子；今天尚未过完）`
 
-  const dailyBars = (usage?.daily ?? []).map(d => ({
-    label: d.date.slice(8, 10),
+  const activeWindow = usage?.windows.find(window => window.days === windowDays) ?? null
+  const activeWindowName = windowName(windowDays)
+
+  const dailyBars = (activeWindow?.daily ?? []).map(d => ({
+    label: windowDays === 365 ? d.date.slice(5).replace('-', '/') : d.date.slice(8, 10),
     value: d.total,
     title: `${d.date} · ${fmtInt(d.total)} tokens · ¥${fmt(d.cost)} · ${d.calls} 次调用`,
   }))
-  const hourlyBars = (usage?.hourly ?? []).map(h => ({
+  const hourlyBars = (activeWindow?.hourly ?? []).map(h => ({
     label: String(h.hour),
     value: h.total,
     title: `${h.hour} 点 · ${fmtInt(h.total)} tokens · ${h.calls} 次调用`,
@@ -776,11 +808,12 @@ export function BalanceDashboard(): ReactElement {
   const chartPeak = (barMode === 'daily' ? dailyBars : hourlyBars)
     .reduce((peak, bar) => (bar.value > peak ? bar.value : peak), 0)
 
-  const modelList = [...(usage?.models ?? [])].sort((a, b) => b.cost - a.cost)
+  const modelList = [...(activeWindow?.models ?? [])].sort((a, b) => b.cost - a.cost)
+  const canonicalModels = [...(usage?.models ?? [])].sort((a, b) => b.cost - a.cost)
   const availableModelKeys = new Set(modelList.map(modelKeyOf))
   const effectiveSelection = selectedModels.filter(k => availableModelKeys.has(k))
   const colorOf = (key: string): string => {
-    const index = modelList.findIndex(m => modelKeyOf(m) === key)
+    const index = canonicalModels.findIndex(m => modelKeyOf(m) === key)
     return MODEL_COLORS[(index < 0 ? 0 : index) % MODEL_COLORS.length]
   }
   const modelCostTotal = modelList.reduce((sum, m) => sum + m.cost, 0)
@@ -796,9 +829,9 @@ export function BalanceDashboard(): ReactElement {
         name,
         color,
         bars: (m?.daily ?? []).map((p, i) => ({
-          label: (usage?.daily ?? [])[i]?.date.slice(8, 10) ?? '',
+          label: (activeWindow?.daily ?? [])[i]?.date.slice(8, 10) ?? '',
           value: p.total,
-          title: `${name} · ${(usage?.daily ?? [])[i]?.date ?? ''} · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
+          title: `${name} · ${(activeWindow?.daily ?? [])[i]?.date ?? ''} · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
         })),
       }
     }
@@ -813,6 +846,8 @@ export function BalanceDashboard(): ReactElement {
       })),
     }
   })
+  const dailyLabelEvery = windowDays === 7 ? 1 : windowDays === 30 ? 5 : windowDays === 90 ? 15 : 30
+  const dailyMinWidth = windowDays === 365 ? 1825 : undefined
 
   return (
     <div className="dq-balance">
@@ -928,19 +963,24 @@ export function BalanceDashboard(): ReactElement {
       <div className="dq-card">
         <div className="dq-card-head">
           <div className="dq-card-title">DSH 用量（tokens）</div>
-          {usage !== null && <ExportMenu usage={usage} />}
+          {usage !== null && (
+            <div className="dq-card-actions">
+              <UsageWindowPicker value={windowDays} onChange={changeWindowDays} />
+              <ExportMenu usage={usage} />
+            </div>
+          )}
         </div>
-        {usage !== null ? (
+        {usage !== null && activeWindow !== null ? (
           <>
             <div className="dq-usage-totals">
-              <Stat label="输入"><div className="dq-stat-value">{fmtCompact(usage.totals.input)}</div></Stat>
-              <Stat label="输出"><div className="dq-stat-value">{fmtCompact(usage.totals.output)}</div></Stat>
-              <Stat label="缓存命中"><div className="dq-stat-value">{fmtCompact(usage.totals.cache)}</div></Stat>
-              <Stat label="模型调用"><div className="dq-stat-value">{fmtInt(usage.totals.calls)}</div></Stat>
+              <Stat label={`${activeWindowName}输入`}><div className="dq-stat-value">{fmtCompact(activeWindow.totals.input)}</div></Stat>
+              <Stat label="输出"><div className="dq-stat-value">{fmtCompact(activeWindow.totals.output)}</div></Stat>
+              <Stat label="缓存命中"><div className="dq-stat-value">{fmtCompact(activeWindow.totals.cache)}</div></Stat>
+              <Stat label="模型调用"><div className="dq-stat-value">{fmtInt(activeWindow.totals.calls)}</div></Stat>
             </div>
             <div className="dq-chart-block-head">
               <div className="dq-chart-title">
-                {barMode === 'daily' ? '近 30 天 · 逐天用量' : '按小时分布（0–23 点）'}
+                {barMode === 'daily' ? `${activeWindowName} · 逐天用量` : `${activeWindowName} · 按小时分布（0–23 点）`}
                 {chartPeak > 0 && <span className="dq-chart-peak">峰值 {fmtCompact(chartPeak)} tokens</span>}
               </div>
               <div className="dq-chart-controls">
@@ -967,12 +1007,15 @@ export function BalanceDashboard(): ReactElement {
                 </div>
               </div>
             </div>
-            {grouped.length > 0 ? (
+            {activeWindow.totals.calls === 0 ? (
+              <div className="dq-empty">{activeWindowName}没有用量记录，换个更长周期看看。</div>
+            ) : grouped.length > 0 ? (
               <>
                 <GroupedBars
                   series={grouped}
                   height={barMode === 'daily' ? 120 : 100}
-                  labelEvery={barMode === 'daily' ? 5 : 3}
+                  labelEvery={barMode === 'daily' ? dailyLabelEvery : 3}
+                  minWidth={barMode === 'daily' ? dailyMinWidth : undefined}
                 />
                 <div className="dq-legend">
                   {grouped.map(s => (
@@ -984,7 +1027,7 @@ export function BalanceDashboard(): ReactElement {
                 </div>
               </>
             ) : barMode === 'daily' ? (
-              <Bars data={dailyBars} height={120} labelEvery={5} />
+              <Bars data={dailyBars} height={120} labelEvery={dailyLabelEvery} minWidth={dailyMinWidth} />
             ) : (
               <Bars data={hourlyBars} height={100} labelEvery={3} />
             )}
@@ -1029,8 +1072,8 @@ export function BalanceDashboard(): ReactElement {
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">模型成本排行</div>
-        {usage !== null ? (
+        <div className="dq-card-title">模型成本排行 · {activeWindowName}</div>
+        {activeWindow !== null ? (
           <ModelRanking models={modelList} totalCost={modelCostTotal} colorOf={colorOf} />
         ) : loadingUsage ? (
           <div className="dq-rank">
@@ -1048,9 +1091,9 @@ export function BalanceDashboard(): ReactElement {
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">会话成本排行</div>
-        {usage !== null ? (
-          <SessionRanking sessions={usage.sessions} count={usage.sessionCount} totalCost={usage.totals.cost} />
+        <div className="dq-card-title">会话成本排行 · {activeWindowName}</div>
+        {activeWindow !== null ? (
+          <SessionRanking sessions={activeWindow.sessions} count={activeWindow.sessionCount} totalCost={activeWindow.totals.cost} />
         ) : loadingUsage ? (
           <div className="dq-sessions">
             {[0, 1, 2].map(i => (

@@ -33,6 +33,7 @@ const usage = {
     earliestAt: null,
     latestAt: null,
   },
+  windows: [],
 } satisfies UsageData
 
 test('CSV cells quote separators and neutralize spreadsheet formulas', () => {

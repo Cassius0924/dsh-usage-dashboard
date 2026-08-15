@@ -6,6 +6,7 @@
  * bypass its own memo via `?refresh=1`.
  */
 import { createCache } from './cache.ts'
+import { USAGE_WINDOW_DAYS } from '../contract.ts'
 import type { BalanceResponse, UsageResponse } from '../contract.ts'
 
 /** Mirror the host memos: balance 60s, usage 5min. */
@@ -37,6 +38,10 @@ const usageIsUsable = (res: UsageResponse): boolean => {
     && data.coverage?.scope === 'local-dsh-session-logs'
     && typeof data.coverage.scannedSessions === 'number'
     && typeof data.coverage.skippedRecords === 'number'
+    && Array.isArray(data.windows) && data.windows.length === USAGE_WINDOW_DAYS.length
+    && USAGE_WINDOW_DAYS.every(days => data.windows.some(window => window.days === days))
+    && data.windows.every(window => Array.isArray(window.daily)
+      && Array.isArray(window.hourly) && Array.isArray(window.models) && Array.isArray(window.sessions))
     && data.totals !== undefined && typeof data.totals.cacheSavings === 'number'
     && data.summary?.today !== undefined
     && Array.isArray(data.pricing?.tiers)

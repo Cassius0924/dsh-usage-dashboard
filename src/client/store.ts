@@ -3,6 +3,7 @@
  * them, the floating widget reacts. Every value is persisted (see ./prefs.ts),
  * so a choice survives a page refresh.
  */
+import { USAGE_WINDOW_DAYS, type UsageWindowDays } from '../contract.ts'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
 
 export interface Store<T> {
@@ -42,6 +43,12 @@ export const lowBalanceStore = createStore<number>('alert.lowBalance', isThresho
 
 /** Monthly estimated-cost budget in CNY. 0 leaves budget tracking disabled. */
 export const monthlyBudgetStore = createStore<number>('budget.monthly', isThreshold, 0)
+
+const isUsageWindowDays = (value: unknown): value is UsageWindowDays =>
+  typeof value === 'number' && USAGE_WINDOW_DAYS.some(days => days === value)
+
+/** Shared time range for the usage chart and both cost rankings. */
+export const usageWindowStore = createStore<UsageWindowDays>('usage.windowDays', isUsageWindowDays, 30)
 
 /** Ephemeral presence of the full dashboard. The widget uses it to step out of
  * the way without changing the user's persisted visibility preference. */

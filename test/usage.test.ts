@@ -161,6 +161,36 @@ test('usage replay aggregates totals, periods, models, sessions, and pricing pro
   assert.equal(data.pricing.splitActive, false)
 })
 
+test('usage replay builds consistent 7, 30, 90, and 365 day windows', async () => {
+  const now = localTime(20, 16)
+  const daysAgo = (days: number): number => new Date(2026, 6, 20 - days, 12, 0, 0).getTime()
+  const events: SessionEventFace[] = [
+    { type: 'request/header', data: { header: { config: { provider: 'deepseek', model: 'deepseek-v4-pro' } } } },
+    ...[0, 10, 100, 400].map(days => ({
+      type: 'assistant/message',
+      time: daysAgo(days),
+      data: { usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: 50 } },
+    } satisfies SessionEventFace)),
+  ]
+  const persistence: SessionPersistenceFace = {
+    list: async () => [{ id: 'windowed-session' }],
+    readFrom: async () => ({ events }),
+  }
+
+  const response = await fetchUsage(persistence, now)
+  assert.equal(response.ok, true)
+  assert.ok(response.data)
+  const windows = new Map(response.data.windows.map(window => [window.days, window]))
+  const periods = [7, 30, 90, 365] as const
+  assert.deepEqual([...windows.keys()], [7, 30, 90, 365])
+  assert.deepEqual(periods.map(days => windows.get(days)?.daily.length), [7, 30, 90, 365])
+  assert.deepEqual(periods.map(days => windows.get(days)?.totals.calls), [1, 2, 2, 3])
+  assert.deepEqual(periods.map(days => windows.get(days)?.models[0]?.calls), [1, 2, 2, 3])
+  assert.deepEqual(periods.map(days => windows.get(days)?.sessions[0]?.calls), [1, 2, 2, 3])
+  assert.deepEqual(periods.map(days => windows.get(days)?.sessionCount), [1, 1, 1, 1])
+  assert.equal(response.data.totals.calls, 4)
+})
+
 test('usage replay reports unavailable services and list failures', async () => {
   assert.deepEqual(await fetchUsage(undefined), {
     ok: false,
