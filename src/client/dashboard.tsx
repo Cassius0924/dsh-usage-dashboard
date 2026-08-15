@@ -544,18 +544,32 @@ function ModelPicker(props: {
   onChange: (keys: string[]) => void
 }): ReactElement | null {
   const { models } = props
-  if (models.length === 0) return null
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent): void => {
       if (rootRef.current !== null && !rootRef.current.contains(e.target as Node)) setOpen(false)
     }
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
     document.addEventListener('mousedown', onDown)
-    return () => document.removeEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLInputElement>('input')?.focus())
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [open])
+
+  if (models.length === 0) return null
 
   const toggle = (key: string): void => {
     props.onChange(
@@ -569,9 +583,20 @@ function ModelPicker(props: {
 
   return (
     <div className="dq-model-picker" ref={rootRef}>
-      <button type="button" className="dq-model-btn" onClick={() => setOpen(!open)}>{label}</button>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="dq-model-btn"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls="dq-model-menu"
+        title="筛选图表中显示的模型"
+        onClick={() => setOpen(value => !value)}
+      >
+        {label}
+      </button>
       {open && (
-        <div className="dq-model-menu">
+        <div id="dq-model-menu" ref={menuRef} className="dq-model-menu" role="group" aria-label="筛选图表模型">
           <label className="dq-model-item dq-model-item--all">
             <input
               type="checkbox"

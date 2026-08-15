@@ -3,7 +3,7 @@
 ## 当前阶段
 
 用户要求继续迭代，轮次上限重置。当前状态：持续加功能并重新做真实界面审计。
-Judge 评分：交互 9.0 / 样式 8.9 / 功能 9.3。缺陷层面 P0、P1 已清空；剩余 P1 是 TODO 中尚未实现的候选功能。
+Judge 评分：交互 9.3 / 样式 8.9 / 功能 9.3。缺陷层面 P0、P1 已清空；剩余 P1 是 TODO 中尚未实现的候选功能。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -85,6 +85,17 @@ Judge 评分：交互 9.0 / 样式 8.9 / 功能 9.3。缺陷层面 P0、P1 已�
 
 ## 已完成（续）
 
+- （轮次 22）`fix(dashboard)`: 模型筛选键盘闭环。
+  - Review / Critique：P2 下拉只能靠外部点击关闭；P1 `models.length === 0` 在 hooks 之前条件返回，模型列表从空变有时有 hooks 顺序崩溃风险；
+    P2 触发按钮没有暴露展开状态 / 控件关联。功能扫描后选择先完成这个核心图表交互，再做统计周期。
+  - Act：hooks 改为无条件执行；菜单打开自动聚焦首个 checkbox，Escape 关闭并回焦触发按钮；补齐
+    `aria-haspopup`、`aria-expanded`、`aria-controls`、筛选分组标签和操作 title，保留点击外部关闭。
+  - Verify：29/29 单测、build、typecheck 全过；真实页面用纯键盘完成 打开 → Tab → Space 选中单模型 → Escape，
+    实测按钮变为「模型 ×1」、菜单关闭、`aria-expanded=false`、焦点回到按钮；重新打开后 Space 恢复全部模型，
+    外部点击关闭仍正常，console error 0、pageerror 0。截图：`/tmp/dsh-dashboard-audit/model-menu.png`。
+  - Impeccable audit：18/20（A11y 4、Performance 3、Theming 4、Responsive 3、Integrity 4）；
+    检测器仅报 4 处既有占比条 `transition: width`，属 P3 性能打磨，不在本轮扩大范围。
+
 - （轮次 21）`feat(dashboard)`: 统计覆盖度诊断。
   - Review / Critique：P1 `src/usage.ts` 会静默吞掉损坏会话，汇总仍像完整账单；P2 `ModelPicker` 未处理 Escape；
     P2 约 814px 内容宽度下 52 周热力图扫读偏密。功能缺口扫描后优先选择 backlog 的覆盖度诊断。
@@ -150,6 +161,6 @@ Judge 评分：交互 9.0 / 样式 8.9 / 功能 9.3。缺陷层面 P0、P1 已�
 
 ## 若继续，下一轮会做
 
-1. 模型下拉补 Escape 关闭与焦点回归（P2），完成一轮独立交互打磨。
-2. 可切换统计周期（P1），让图表和排行能在 7 / 30 / 90 / 365 天之间切换。
-3. 结合周期选择降低一年热力图的扫读密度（P2）。
+1. 可切换统计周期（P1），让图表和排行能在 7 / 30 / 90 / 365 天之间切换。
+2. 结合周期选择降低一年热力图的扫读密度（P2）。
+3. 后续打磨时把 4 处占比条宽度动画改成 transform（P3）。

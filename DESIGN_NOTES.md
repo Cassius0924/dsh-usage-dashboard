@@ -30,6 +30,8 @@
 - 用户设置类状态（悬浮窗显示/位置/收起、阈值、预算）一律持久化到 localStorage，
   key 统一前缀 `dsh-usage-dashboard:`，并带 `:v<N>` 版本后缀便于演进。
 - 悬浮窗只用 `position:absolute` 挂在 `[data-shell-overlay]` 上，拖动边界排除侧边栏与会话头部。
+- 弹出式菜单打开后聚焦首个选项；Escape 关闭并回焦触发按钮；触发按钮始终同步 `aria-expanded`，
+  菜单内选择后不强制关闭，便于多选连续操作。
 
 ## 计价
 
