@@ -23,6 +23,16 @@ const usage = {
   },
   sessions: [],
   sessionCount: 0,
+  coverage: {
+    scope: 'local-dsh-session-logs',
+    listedSessions: 0,
+    scannedSessions: 0,
+    usageRecords: 0,
+    skippedRecords: 0,
+    failedSessions: 0,
+    earliestAt: null,
+    latestAt: null,
+  },
 } satisfies UsageData
 
 test('CSV cells quote separators and neutralize spreadsheet formulas', () => {

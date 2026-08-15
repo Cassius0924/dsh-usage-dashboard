@@ -11,7 +11,7 @@ import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
-import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageData } from '../contract.ts'
+import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData } from '../contract.ts'
 import { lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
@@ -191,6 +191,55 @@ function PricingNote(props: { pricing: PricingInfo }): ReactElement {
             : `${pricing.switchDate} 00:00 起改为峰谷定价（高峰 ${pricing.peakWindows.join('、')}，闲时价格减半），届时本页会按每条记录的时间自动分段计价。`}
           未知模型按 deepseek-v4-pro 计价。
         </p>
+      </div>
+    </details>
+  )
+}
+
+const coverageTime = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric',
+  month: 'numeric',
+  day: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+})
+
+/** Make a locally-computed bill honest about which logs it could inspect. */
+function CoverageDiagnostics(props: { coverage: UsageCoverage }): ReactElement {
+  const { coverage } = props
+  const hasGaps = coverage.failedSessions > 0
+    || coverage.skippedRecords > 0
+    || coverage.scannedSessions < coverage.listedSessions
+  const range = coverage.earliestAt === null || coverage.latestAt === null
+    ? '暂无有效用量时间'
+    : `${coverageTime.format(coverage.earliestAt)} – ${coverageTime.format(coverage.latestAt)}`
+
+  return (
+    <details className={`dq-coverage${hasGaps ? ' dq-coverage--warn' : ''}`}>
+      <summary className="dq-coverage-summary">
+        <span className="dq-coverage-title">统计范围</span>
+        <span className="dq-coverage-status">{hasGaps ? '存在缺口' : '本机读取完整'}</span>
+        <span className="dq-coverage-brief">
+          扫描 {fmtInt(coverage.scannedSessions)} / {fmtInt(coverage.listedSessions)} 个会话 · {fmtInt(coverage.usageRecords)} 条用量记录
+        </span>
+      </summary>
+      <div className="dq-coverage-body">
+        <dl className="dq-coverage-metrics">
+          <div><dt>成功扫描</dt><dd>{fmtInt(coverage.scannedSessions)} 个会话</dd></div>
+          <div><dt>读取失败</dt><dd>{fmtInt(coverage.failedSessions)} 个会话</dd></div>
+          <div><dt>跳过记录</dt><dd>{fmtInt(coverage.skippedRecords)} 条</dd></div>
+        </dl>
+        <p className="dq-coverage-range">记录时间：{range}</p>
+        <p className="dq-coverage-note">
+          这里只统计当前设备上的 DSH 会话日志，不包含其他设备、DeepSeek 平台直接调用或已删除的本地日志。
+        </p>
+        {hasGaps && (
+          <p className="dq-coverage-warning">
+            本次回放有日志无法读取或用量记录格式异常，页面汇总可能低于实际消耗；可刷新重试，并以 DeepSeek 官方平台账单为准。
+          </p>
+        )}
       </div>
     </details>
   )
@@ -916,6 +965,7 @@ export function BalanceDashboard(): ReactElement {
             )}
             <div className="dq-chart-title">近一年 · 每日用量热力图</div>
             <Heatmap data={usage.heatmap} />
+            <CoverageDiagnostics coverage={usage.coverage} />
           </>
         ) : loadingUsage ? (
           <UsageSkeleton />

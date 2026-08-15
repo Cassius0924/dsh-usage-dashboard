@@ -138,6 +138,16 @@ test('usage replay aggregates totals, periods, models, sessions, and pricing pro
   assert.equal(data.sessions[0]?.id, 'session-one')
   assert.equal(data.sessions[0]?.title, '最终标题')
   assert.equal(data.sessions[1]?.title, '会话 session-')
+  assert.deepEqual(data.coverage, {
+    scope: 'local-dsh-session-logs',
+    listedSessions: 3,
+    scannedSessions: 2,
+    usageRecords: 3,
+    skippedRecords: 1,
+    failedSessions: 1,
+    earliestAt: yesterday,
+    latestAt: todayFlash,
+  })
 
   assert.equal(data.peakSplit.peak.calls + data.peakSplit.offPeak.calls, 3)
   closeTo(data.peakSplit.peakEraCost,

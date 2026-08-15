@@ -153,6 +153,28 @@ export interface SessionCost {
   lastActive: number
 }
 
+/**
+ * What the local log replay could actually inspect. Totals can otherwise look
+ * authoritative even when one corrupt session was skipped, so this metadata
+ * travels with every usage response and lets the UI disclose partial results.
+ */
+export interface UsageCoverage {
+  scope: 'local-dsh-session-logs'
+  /** Session headers with a usable id returned by the local persistence. */
+  listedSessions: number
+  /** Session logs read successfully, including logs with no usage. */
+  scannedSessions: number
+  /** Valid assistant usage records folded into the totals. */
+  usageRecords: number
+  /** Usage records rejected because their time or token data was invalid. */
+  skippedRecords: number
+  /** Session logs that could not be read at all. */
+  failedSessions: number
+  /** Epoch ms of the first/last valid usage record across all local logs. */
+  earliestAt: number | null
+  latestAt: number | null
+}
+
 export interface UsageData {
   daily: DailyUsage[]
   hourly: HourlyUsage[]
@@ -166,6 +188,7 @@ export interface UsageData {
   sessions: SessionCost[]
   /** How many sessions contributed usage in total. */
   sessionCount: number
+  coverage: UsageCoverage
 }
 
 export interface UsageResponse {

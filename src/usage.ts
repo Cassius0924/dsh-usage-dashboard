@@ -6,7 +6,7 @@
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageData, UsageResponse, UsageSummary } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageCoverage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra, isPeak, pricingInfo } from './pricing.ts'
 
@@ -131,8 +131,12 @@ function summarize(dayMap: Map<string, Bucket>, now: Date): UsageSummary {
  * can be attributed per model. Events without any preceding header fall back
  * to the `''`/`''` (unknown) bucket.
  */
-function addUsageEvent(events: SessionEventFace[] | undefined, onEvent: (time: number, input: number, output: number, cache: number, reasoning: number, provider: string, model: string) => void): void {
-  if (events === undefined) return
+function addUsageEvent(
+  events: SessionEventFace[] | undefined,
+  onEvent: (time: number, input: number, output: number, cache: number, reasoning: number, provider: string, model: string) => void,
+): Pick<UsageCoverage, 'usageRecords' | 'skippedRecords'> {
+  const result = { usageRecords: 0, skippedRecords: 0 }
+  if (events === undefined) return result
   let provider = ''
   let model = ''
   for (const ev of events) {
@@ -147,13 +151,17 @@ function addUsageEvent(events: SessionEventFace[] | undefined, onEvent: (time: n
     if (ev?.type !== 'assistant/message') continue
     const usage = ev.data?.usage
     if (usage === undefined) continue
-    const input = Number(usage.inputTokens) || 0
-    const output = Number(usage.outputTokens) || 0
-    const cache = Number(usage.cacheReadTokens) || 0
-    const reasoning = Number(usage.reasoningTokens) || 0
-    if (ev.time === undefined) continue
+    const values = [usage.inputTokens, usage.outputTokens, usage.cacheReadTokens, usage.reasoningTokens]
+      .map(value => value === undefined ? 0 : Number(value))
+    if (typeof ev.time !== 'number' || !Number.isFinite(ev.time) || values.some(value => !Number.isFinite(value) || value < 0)) {
+      result.skippedRecords += 1
+      continue
+    }
+    const [input = 0, output = 0, cache = 0, reasoning = 0] = values
     onEvent(ev.time, input, output, cache, reasoning, provider, model)
+    result.usageRecords += 1
   }
+  return result
 }
 
 export async function fetchUsage(persistence: SessionPersistenceFace | undefined, nowMs = Date.now()): Promise<UsageResponse> {
@@ -172,6 +180,16 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   const modelDays = new Map<string, Map<string, Bucket>>()
   const modelHours = new Map<string, Map<string, Bucket>>()
   const sessions: SessionCost[] = []
+  const coverage: UsageCoverage = {
+    scope: 'local-dsh-session-logs',
+    listedSessions: 0,
+    scannedSessions: 0,
+    usageRecords: 0,
+    skippedRecords: 0,
+    failedSessions: 0,
+    earliestAt: null,
+    latestAt: null,
+  }
   // Peak / off-peak split, plus the same usage re-priced under the new table.
   const peakSplit: PeakSplit = {
     peak: { total: 0, cost: 0, calls: 0 },
@@ -194,13 +212,19 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     map.set(key, bucket)
   }
 
-  for (const header of headers) {
-    const sid = header.id ?? header.sessionId
-    if (sid === undefined || sid === '') continue
+  const sessionIds = headers
+    .map(header => header.id ?? header.sessionId)
+    .filter((sid): sid is string => sid !== undefined && sid !== '')
+  coverage.listedSessions = sessionIds.length
+
+  for (const sid of sessionIds) {
     try {
       const { events } = await persistence.readFrom(sid, 0)
+      coverage.scannedSessions += 1
       const session: SessionCost = { id: sid, title: '', total: 0, cost: 0, calls: 0, lastActive: 0 }
-      addUsageEvent(events, (time, input, output, cache, reasoning, provider, model) => {
+      const scanned = addUsageEvent(events, (time, input, output, cache, reasoning, provider, model) => {
+        if (coverage.earliestAt === null || time < coverage.earliestAt) coverage.earliestAt = time
+        if (coverage.latestAt === null || time > coverage.latestAt) coverage.latestAt = time
         const d = new Date(time)
         const dayKey = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
         const hourKey = String(d.getHours())
@@ -240,12 +264,15 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         peakSplit.offPeakEraCost += costUnderPeakEra(time, model, input, cache, output, true)
         overall.calls += 1
       })
+      coverage.usageRecords += scanned.usageRecords
+      coverage.skippedRecords += scanned.skippedRecords
       if (session.calls > 0) {
         session.title = titleOf(events, sid)
         sessions.push(session)
       }
     } catch {
       // One broken session log must not sink the whole dashboard.
+      coverage.failedSessions += 1
     }
   }
 
@@ -319,6 +346,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       peakSplit,
       sessions: [...sessions].sort((a, b) => b.cost - a.cost).slice(0, SESSION_TOP_N),
       sessionCount: sessions.length,
+      coverage,
       totals: {
         input: overall.input,
         output: overall.output,

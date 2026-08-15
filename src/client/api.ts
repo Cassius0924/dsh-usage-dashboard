@@ -34,6 +34,9 @@ const usageIsUsable = (res: UsageResponse): boolean => {
     && Array.isArray(data.daily) && Array.isArray(data.hourly) && Array.isArray(data.heatmap)
     && Array.isArray(data.models) && Array.isArray(data.sessions)
     && typeof data.sessionCount === 'number'
+    && data.coverage?.scope === 'local-dsh-session-logs'
+    && typeof data.coverage.scannedSessions === 'number'
+    && typeof data.coverage.skippedRecords === 'number'
     && data.totals !== undefined && typeof data.totals.cacheSavings === 'number'
     && data.summary?.today !== undefined
     && Array.isArray(data.pricing?.tiers)
