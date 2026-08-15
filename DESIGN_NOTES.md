@@ -44,6 +44,11 @@
   但 tooltip 不裁掉其他指标，保证每个数据点仍可解释。
 - 图表使用 roving tabindex：每张图只有最近有数据的数据点进入页面 Tab 序列，方向键在点间移动，Home / End 到首尾；
   热力图左右按周、上下按日。焦点、tooltip 与 `aria-label` 必须同步，底部点位滚入固定输入框上方的安全区。
+- 620px 及更窄视口下，`.dq-balance` 根容器的底部 padding 会实时避让 DSH 固定输入框：`dashboard.tsx` 用
+  `src/client/dom.ts` 里与 widget.tsx 共用的 `[data-slot="conversation.composer.dock"]` 座位测量法，把测得
+  的实际高度写成 CSS 变量 `--dq-composer-h`，`styles.ts` 只在 620px 媒体查询里消费它（`calc(该变量 + 16px)`）；
+  桌面 `padding:20px 24px 48px` 完全不引用这个变量，因此永不受影响。新增会覆盖窄屏底部的常驻元素（例如未来
+  可能的悬浮提示条）时，复用同一变量而不是另起一个固定像素留白，避免两处安全区各算各的。
 - 触屏没有 hover：图表数据点改为点按固定 tooltip（再点同点或图表外区域关闭），不再靠 `pointermove` 触发；
   用位移 + 耗时阈值区分点按与滚动/拖动，不调用 `preventDefault`，让横向/纵向滚动保持原生。固定态与键盘
   roving 焦点态各自独立又共享同一 tooltip 展示逻辑，判定逻辑集中在 `chart-focus.ts` 的纯函数里，不另起

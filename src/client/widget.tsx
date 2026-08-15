@@ -9,6 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt, subscribeUsage } from './api.ts'
 import { fmt } from './charts.tsx'
 import type { BalanceData, UsageData } from '../contract.ts'
+import { getMainColumn, getShellFrame, slotBox } from './dom.ts'
 import { localizeApiError, useI18n } from './i18n.tsx'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
 import { lowBalanceStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
@@ -41,38 +42,6 @@ interface DragSession {
   bounds: Bounds
 }
 
-/** The shell's main column: the region between the sidebar and the details
- *  panel. Found through the stable `conversation` slot anchor rather than the
- *  hashed layout class names. */
-function getMainColumn(frame: HTMLElement): HTMLElement | null {
-  const anchor = frame.querySelector('[data-slot="conversation"]')
-  const column = anchor?.parentElement ?? null
-  return column === frame ? null : column
-}
-
-/**
- * The laid-out box behind a slot. Slot wrappers are 0×0, and which neighbour
- * carries the real box differs per slot: the session header renders inside its
- * wrapper (`'child'`), while the composer's wrapper sits inside the seat that
- * reserves the space (`'ancestor'`). Picking the wrong side silently yields a
- * box in the wrong place, so the caller says which one it means.
- */
-function slotBox(frame: HTMLElement, slot: string, side: 'child' | 'ancestor'): DOMRect | null {
-  const anchor = frame.querySelector(`[data-slot="${slot}"]`)
-  if (anchor === null) return null
-  if (side === 'child') {
-    const rect = (anchor.firstElementChild as HTMLElement | null)?.getBoundingClientRect() ?? null
-    return rect !== null && rect.height > 0 ? rect : null
-  }
-  let el: HTMLElement | null = anchor.parentElement
-  for (let depth = 0; depth < 4 && el !== null && el !== frame; depth++) {
-    const rect = el.getBoundingClientRect()
-    if (rect.height > 0) return rect
-    el = el.parentElement
-  }
-  return null
-}
-
 /** Below this the region is too short to park a widget in, so an exclusion is
  *  skipped rather than squeezing the widget out of the frame. */
 const MIN_REGION_HEIGHT = 140
@@ -90,8 +59,7 @@ const MIN_REGION_HEIGHT = 140
 function getBounds(node: HTMLElement | null): Bounds {
   const fallback: Bounds = { left: 0, top: 0, right: 100000, bottom: 100000 }
   if (node === null) return fallback
-  const overlay = typeof node.closest === 'function' ? node.closest('[data-shell-overlay]') : null
-  const frame = overlay?.parentElement ?? null
+  const frame = getShellFrame(node)
   if (frame === null) return fallback
   const frameRect = frame.getBoundingClientRect()
   let left = frameRect.left
@@ -208,7 +176,7 @@ export function QuotaWidget(): ReactElement | null {
       setPos(prev => (prev !== null && prev.x === next.x && prev.y === next.y ? prev : next))
     }
     place()
-    const frame = node.closest('[data-shell-overlay]')?.parentElement as HTMLElement | null
+    const frame = getShellFrame(node)
     let observer: ResizeObserver | null = null
     if (frame !== null && typeof ResizeObserver === 'function') {
       observer = new ResizeObserver(place)

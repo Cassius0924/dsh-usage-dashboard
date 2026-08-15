@@ -5,17 +5,28 @@
  * refresh then updates it without blocking; a full-screen 加载中 only
  * appears when nothing has ever been cached.
  */
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import { USAGE_WINDOW_DAYS } from '../contract.ts'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
+import { getComposerElement, getShellFrame } from './dom.ts'
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
 import { fallbackT, localizeApiError, useI18n, type Translate } from './i18n.tsx'
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
 import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
+
+/** Fallback composer height for the narrow-screen bottom safe area, used only
+ *  until the real measurement below lands (or if the host markup ever stops
+ *  exposing the `conversation.composer.dock` slot). DSH has no `--dsw-*`
+ *  variable for composer height — this number is not a guess: it is the
+ *  measured `[data-slot="conversation.composer.dock"]` seat height on a live
+ *  DSH instance at 620 / 480 / 390px viewports (126px, stable across all
+ *  three; see LEARNINGS.md). Kept in sync with the small margin added in
+ *  styles.ts's `.dq-balance` narrow media query. */
+const COMPOSER_FALLBACK_PX = 126
 
 /** One shimmering placeholder block, sized by the caller. */
 function Skel(props: { w: number; h: number }): ReactElement {
@@ -721,6 +732,40 @@ export function BalanceDashboard(): ReactElement {
   const [windowDays, setWindowDays] = useState<UsageWindowDays>(usageWindowStore.get())
   const [chartMetric, setChartMetric] = useState<ChartMetric>(chartMetricStore.get())
   const budgetInputRef = useRef<HTMLInputElement | null>(null)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const [composerHeight, setComposerHeight] = useState<number | null>(null)
+
+  // Narrow viewports only: keep the last card scrollable clear of the host's
+  // fixed composer, which otherwise overlaps the bottom of a long dashboard
+  // (see LEARNINGS.md). Reuses the same `conversation.composer.dock` slot
+  // widget.tsx already excludes from its own drag bounds, so both readings of
+  // "where is the composer" stay in sync. Desktop layout never reads this —
+  // the CSS variable is only consumed inside the 620px media query.
+  useLayoutEffect(() => {
+    const node = rootRef.current
+    if (node === null) return
+    const measure = (): void => {
+      const frame = getShellFrame(node)
+      const composer = getComposerElement(frame)
+      const rect = composer?.getBoundingClientRect() ?? null
+      const next = rect !== null && rect.height > 0 ? Math.round(rect.height) : null
+      setComposerHeight(prev => (prev === next ? prev : next))
+    }
+    measure()
+    const frame = getShellFrame(node)
+    const composer = getComposerElement(frame)
+    let observer: ResizeObserver | null = null
+    if (typeof ResizeObserver === 'function') {
+      observer = new ResizeObserver(measure)
+      if (composer !== null) observer.observe(composer)
+      if (frame !== null) observer.observe(frame)
+    }
+    window.addEventListener('resize', measure)
+    return () => {
+      observer?.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [])
 
   // The full dashboard and the floating summary should never compete for the
   // same pixels. This does not touch the persisted widget preference: leaving
@@ -927,8 +972,12 @@ export function BalanceDashboard(): ReactElement {
   )
   const errorText = error === null ? null : localizeApiError(error, t, 'error.query')
 
+  const composerSafeAreaStyle = {
+    '--dq-composer-h': `${composerHeight ?? COMPOSER_FALLBACK_PX}px`,
+  } as CSSProperties
+
   return (
-    <div className="dq-balance">
+    <div className="dq-balance" ref={rootRef} style={composerSafeAreaStyle}>
       <div className="dq-status-row">
         <div className="dq-status-messages">
           <span

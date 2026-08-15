@@ -57,3 +57,13 @@
 - **触屏点按 tooltip 不能复用 `pointermove` 的 hover 展示路径**：`pointermove` 对触摸同样会连续触发
   （手指划过时），如果不按 `pointerType==='touch'` 短路掉，拖动/滚动图表时会连续弹出沿途每个点的 tooltip。
   改为只在 `pointerdown`→`pointerup` 且位移 / 耗时都低于阈值时才判定为一次点按。
+- **DSH 没有语义化的 composer 高度 CSS 变量**（搜过全部 `--dsw-*` 用法和 node_modules 里的 DSH 包类型定义，
+  均无匹配）；唯一可靠来源是 DOM：`[data-slot="conversation.composer.dock"]` 的 0×0 slot 包装元素本身不能用，
+  真正占位的是它父级链上第一个 `height > 0` 的"座位"元素（`widget.tsx` 排除拖动边界时已验证过这个读法，
+  现抽到 `src/client/dom.ts` 的 `getComposerElement`/`slotBox` 共享，两处不再各写一套）。2026-08-16 实测该
+  座位在本机 DSH 于 620 / 480 / 390px 三档视口下高度一致为 **126px**（含输入框和下方的「N 轮 · LLM 用时」状态条），
+  据此把窄屏安全区兜底值定为 `126px + 16px margin = 142px`，写在 `dashboard.tsx` 的 `COMPOSER_FALLBACK_PX`
+  常量注释和 `styles.ts` 的 `calc()` 里；正常路径用 `ResizeObserver` 实时测量，兜底值只在测量失败时生效。
+- **窄屏安全区必须只出现在窄屏媒体查询里，不能用 JS 判断视口宽度门控测量**：`--dq-composer-h` 这个 CSS 变量
+  始终由 `useLayoutEffect` 计算并写在根节点上，桌面样式规则单纯不引用它，天然不受影响——比另写一套
+  "仅窄屏时才测量"的 JS 分支更简单，也不会在断点附近出现测量滞后的闪烁。

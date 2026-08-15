@@ -4,7 +4,8 @@
 
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
 轮次 32 后用户进一步收拢方向：接下来优先做**界面排版设计优化**（信息层级、留白、栅格/对齐、窄屏重排），
-交互细节打磨降为次优先。Judge 评分：交互 9.9 / 样式 9.3 / 功能 9.7。当前无 P0；UI 专项剩余 P1 为窄屏底部安全区。
+交互细节打磨降为次优先。Judge 评分：交互 9.9 / 样式 9.3 / 功能 9.7。当前无 P0；轮次 33 已完成窄屏底部安全区，
+UI 专项排版类 P1 暂无剩余，继续按 backlog 扫描排版层级、留白与响应式打磨。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -85,6 +86,29 @@
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 33）`style(dashboard)`: 窄屏底部安全区。
+  - Review / Critique：P1 DSH 固定输入框（composer）在 620px 及更窄视口下会覆盖长仪表盘底部，设置卡滚到底后
+    仍可能被遮挡、输入框和按钮点不到；P2 之前 620px 下 `.dq-balance` 只有固定 `40px` 底部留白，与实际输入框
+    高度无关，既可能不够避让也可能日后输入框变化后失配；P2 代码库没有语义化的 `--dsw-*` composer 高度变量，
+    若凭空硬编码像素值容易与宿主实际尺寸脱节。功能扫描继续遵循排版优化优先方向，不涉及计价 / 统计口径。
+  - Act：把 widget.tsx 里已验证过的 `getMainColumn` / `slotBox` 宿主 DOM 查找逻辑抽到新增的 `src/client/dom.ts`
+    共享模块（`getShellFrame`、`slotBox`、新增 `getComposerElement`），widget.tsx 改为从这里导入，行为不变；
+    dashboard.tsx 用同一个 `[data-slot="conversation.composer.dock"]` 选择器实时测量 composer 的"座位"高度
+    （`ResizeObserver` 监听 composer 元素与 shell frame + `resize` 兜底），写成 `.dq-balance` 根节点的
+    CSS 变量 `--dq-composer-h`；`styles.ts` 620px 媒体查询下把底部 padding 从固定 `40px` 改为
+    `calc(var(--dq-composer-h,126px) + 16px)`，桌面（无 620px 媒体查询命中）的 `padding:20px 24px 48px`
+    完全不变。JS 测不到时的兜底值 `126px` 不是猜的：是本机 DSH 在 620/480/390px 三档视口下实测的 composer
+    座位高度（三档一致），连同 16px 外边距一起写进 `dashboard.tsx` 常量注释与 LEARNINGS.md。
+  - Verify：42/42 单测、build、typecheck 全过（exit 0）；client-only 改动硬刷新即生效，无需重启 `dsh.service`。
+    Playwright 实测 620×800 / 480×800 / 390×844 三档视口：滚到底后设置卡（含月度预算输入框）底部与 composer
+    顶部间距分别为 141.6 / 141.5 / 141.5px（均为正值即完全清出），`#dq-monthly-budget` 的 Playwright 点击
+    在三档均成功不被拦截；`.dq-balance` 实际 `padding-bottom` 均为 `142px`（= 测得 `126px` + `16px`），
+    未出现"远大于输入框高度"的空洞。1280×900 桌面视口下 `padding-bottom` 保持 `48px` 不变，设置卡本就在
+    composer 上方 47.75px 处，未新增留白。悬浮窗回归：Chat 标签下 widget 底部仍在 composer 顶部之上（未与
+    composer 重叠）；切到「额度」标签 `aria-hidden=true`，切回「对话」标签恢复 `aria-hidden=false`，
+    持久化开关未被临时避让逻辑污染。全部场景 console error 0、pageerror 0。
+    截图：`/tmp/dsh-ui-audit/safe-area-620x800.png`、`safe-area-390x844.png`。
 
 - （轮次 32）`fix(charts)`: 图表触屏点按明细。
   - Review / Critique：P1 移动端没有 hover，柱图 / 分模型柱图 / 热力图的 tooltip 只靠 `pointermove` 触发，
