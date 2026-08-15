@@ -7,7 +7,7 @@
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
 import { USAGE_WINDOW_DAYS } from './contract.ts'
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageCoverage, UsageData, UsageResponse, UsageSummary, UsageWindowDays } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageAnomaly, UsageCoverage, UsageData, UsageResponse, UsageSummary, UsageWindowDays } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra, isPeak, pricingInfo } from './pricing.ts'
 
@@ -197,6 +197,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   const modelDays = new Map<string, Map<string, Bucket>>()
   const modelHours = new Map<string, Map<string, Bucket>>()
   const sessions: SessionCost[] = []
+  const sessionHistories: Array<{ session: SessionCost; days: Map<string, Bucket> }> = []
   const coverage: UsageCoverage = {
     scope: 'local-dsh-session-logs',
     listedSessions: 0,
@@ -307,6 +308,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       const { events } = await persistence.readFrom(sid, 0)
       coverage.scannedSessions += 1
       const session: SessionCost = { id: sid, title: '', total: 0, cost: 0, calls: 0, lastActive: 0 }
+      const sessionDayMap = new Map<string, Bucket>()
       const windowSessions = windowAggregates.map((): SessionCost => ({ id: sid, title: '', total: 0, cost: 0, calls: 0, lastActive: 0 }))
       const scanned = addUsageEvent(events, (time, input, output, cache, reasoning, provider, model) => {
         if (coverage.earliestAt === null || time < coverage.earliestAt) coverage.earliestAt = time
@@ -320,6 +322,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         const eventTotal = input + output + cache
         bump(dayMap, dayKey, input, output, cache, cost)
         bump(hourMap, hourKey, input, output, cache, cost)
+        bump(sessionDayMap, dayKey, input, output, cache, cost)
         bumpModel(modelTotals, modelDays, modelHours, modelKey, dayKey, hourKey, input, output, cache, cost)
         bumpOverall(overall, input, output, cache, reasoning, cost, cacheSavings)
         bumpSession(session, time, eventTotal, cost)
@@ -345,6 +348,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         const title = titleOf(events, sid)
         session.title = title
         sessions.push(session)
+        sessionHistories.push({ session, days: sessionDayMap })
         for (let i = 0; i < windowAggregates.length; i++) {
           const windowSession = windowSessions[i]
           if (windowSession.calls === 0) continue
@@ -424,6 +428,61 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   }
 
   const models = makeModels(modelTotals, modelDays, modelHours, 30)
+  const anomalyHistory = makeDaily(dayMap, 365)
+  const anomalies: UsageAnomaly[] = []
+  for (let i = 0; i < anomalyHistory.length; i++) {
+    const current = anomalyHistory[i]
+    const previous = anomalyHistory.slice(Math.max(0, i - 7), i)
+    const activeDays = previous.filter(day => day.cost > 0)
+    const baselineCalls = previous.reduce((sum, day) => sum + day.calls, 0)
+    if (activeDays.length === 0 || baselineCalls < 10 || current.cost < 1) continue
+    const baselineCost = activeDays.reduce((sum, day) => sum + day.cost, 0) / activeDays.length
+    if (current.cost < baselineCost * 2.5 || current.cost - baselineCost < 1) continue
+
+    let topModelKey = ''
+    let topModel = emptyBucket()
+    for (const [modelKey, days] of modelDays) {
+      const bucket = days.get(current.date)
+      if (bucket !== undefined && bucket.cost > topModel.cost) {
+        topModelKey = modelKey
+        topModel = bucket
+      }
+    }
+    let topSession: { session: SessionCost; bucket: Bucket } | null = null
+    for (const history of sessionHistories) {
+      const bucket = history.days.get(current.date)
+      if (bucket !== undefined && (topSession === null || bucket.cost > topSession.bucket.cost)) {
+        topSession = { session: history.session, bucket }
+      }
+    }
+    if (topModelKey === '' || topSession === null) continue
+    const slash = topModelKey.indexOf('/')
+    anomalies.push({
+      date: current.date,
+      total: current.total,
+      cost: current.cost,
+      calls: current.calls,
+      baselineCost,
+      baselineDays: activeDays.length,
+      multiple: current.cost / baselineCost,
+      model: {
+        provider: slash < 0 ? '' : topModelKey.slice(0, slash),
+        model: slash < 0 ? topModelKey : topModelKey.slice(slash + 1),
+        total: topModel.total,
+        cost: topModel.cost,
+        calls: topModel.calls,
+      },
+      session: {
+        id: topSession.session.id,
+        title: topSession.session.title,
+        total: topSession.bucket.total,
+        cost: topSession.bucket.cost,
+        calls: topSession.bucket.calls,
+      },
+    })
+  }
+  anomalies.sort((a, b) => b.date.localeCompare(a.date))
+  anomalies.splice(5)
   const windows = windowAggregates.map(aggregate => ({
     days: aggregate.days,
     daily: makeDaily(aggregate.dayMap, aggregate.days),
@@ -448,6 +507,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       sessionCount: sessions.length,
       coverage,
       windows,
+      anomalies,
       totals: {
         input: overall.input,
         output: overall.output,

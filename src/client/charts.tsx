@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent a
 export interface BarDatum {
   label: string
   value: number
+  /** Visually marks a day that the usage replay classified as a cost spike. */
+  warning?: boolean
   /** Tooltip text, composed as `heading · row · row`; each ` · ` segment is
    *  rendered on its own line, the first as the heading. */
   title?: string
@@ -75,7 +77,7 @@ export function Bars(props: { data: BarDatum[]; height?: number; labelEvery?: nu
             return (
               <div
                 key={i}
-                className="dq-bar-col"
+                className={`dq-bar-col${datum.warning === true ? ' dq-bar-col--warning' : ''}`}
                 aria-label={text}
                 onPointerMove={e => show(e, text)}
               >
@@ -121,7 +123,10 @@ export function GroupedBars(props: {
       <div className="dq-bars-scroll" ref={scrollRef}>
         <div className="dq-bars" style={{ height: `${height + 18}px`, minWidth: minWidth === undefined ? undefined : `${minWidth}px` }}>
           {Array.from({ length: count }, (_, i) => (
-            <div key={i} className="dq-bar-col">
+            <div
+              key={i}
+              className={`dq-bar-col${series.some(s => s.bars[i]?.warning === true) ? ' dq-bar-col--warning' : ''}`}
+            >
               <div className="dq-bar-group">
                 {series.map(s => {
                   const datum = s.bars[i]

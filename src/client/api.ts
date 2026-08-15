@@ -42,6 +42,7 @@ const usageIsUsable = (res: UsageResponse): boolean => {
     && USAGE_WINDOW_DAYS.every(days => data.windows.some(window => window.days === days))
     && data.windows.every(window => Array.isArray(window.daily)
       && Array.isArray(window.hourly) && Array.isArray(window.models) && Array.isArray(window.sessions))
+    && Array.isArray(data.anomalies)
     && data.totals !== undefined && typeof data.totals.cacheSavings === 'number'
     && data.summary?.today !== undefined
     && Array.isArray(data.pricing?.tiers)
