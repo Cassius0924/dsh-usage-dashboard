@@ -88,6 +88,14 @@ Judge 评分：交互 8.5 / 样式 8.5 / 功能 9.0（缺陷层面 P0、P1 已�
   证据：接口实测 6 个会话、标题 6/6 全部解析成功、按费用降序、Top-6 之和 = totals.cost（100%）；
   界面显示最贵会话「写一个查看DeepSeek额度的dsh插件 ¥11.38 · 占 77.8%」；控制台 0 错误。
 
+## 发布（2026-08-15）
+
+- 已发布 `@cassius0924/dsh-usage-dashboard@0.3.0`（unscoped 名被无关的包先占，改用作用域包）。
+- 证据：registry shasum `0b21eca…` 与本地 dry-run 一致；从 npm 干净安装后校验
+  `cordis.patch.yml` 的 name、client bundle 的 loader id 均为作用域名，两个 exports 入口都能解析。
+- 踩坑见 LEARNINGS：改包名牵连 `cordis.patch.yml` / `build.mjs` loader id / profile 挂载三处，
+  漏掉 loader id 会让 host 全绿但整个 GUI 启动图卡死。
+
 ## 收尾验证（轮次 15）
 
 - `pnpm run build` exit 0、`pnpm run typecheck` exit 0；`systemctl is-active dsh.service` = active。

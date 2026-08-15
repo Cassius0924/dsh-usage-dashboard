@@ -1,5 +1,8 @@
 # dsh-usage-dashboard
 
+[![npm](https://img.shields.io/npm/v/@cassius0924/dsh-usage-dashboard?color=cb3837&logo=npm)](https://www.npmjs.com/package/@cassius0924/dsh-usage-dashboard)
+[![license](https://img.shields.io/npm/l/@cassius0924/dsh-usage-dashboard?color=blue)](./LICENSE)
+
 在 [DSH](https://github.com/deepseek-ai)（DeepSeek Harness）的 Web GUI 里，随时看得见 DeepSeek 的钱花在哪：
 **余额还能撑几天、今天花了多少、哪个模型最贵、缓存替你省了多少，以及 2026-08-17 峰谷定价之后账单会变成什么样。**
 
