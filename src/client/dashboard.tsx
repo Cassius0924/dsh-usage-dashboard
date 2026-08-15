@@ -9,6 +9,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactEleme
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
+import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageData } from '../contract.ts'
 import { lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
@@ -207,6 +208,91 @@ function Stat(props: { label: string; children: ReactNode }): ReactElement {
 function Link(props: { href: string; children: ReactNode }): ReactElement {
   return (
     <a className="dq-link" href={props.href} target="_blank" rel="noreferrer">{props.children}</a>
+  )
+}
+
+/** Download menu kept compact in the usage card header. */
+function ExportMenu(props: { usage: UsageData }): ReactElement {
+  const [open, setOpen] = useState(false)
+  const [done, setDone] = useState(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const menuRef = useRef<HTMLDivElement | null>(null)
+  const doneTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (event: MouseEvent): void => {
+      if (rootRef.current !== null && !rootRef.current.contains(event.target as Node)) setOpen(false)
+    }
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setOpen(false)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>('button')?.focus())
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  useEffect(() => () => {
+    if (doneTimerRef.current !== null) window.clearTimeout(doneTimerRef.current)
+  }, [])
+
+  const finish = (): void => {
+    setOpen(false)
+    setDone(true)
+    if (doneTimerRef.current !== null) window.clearTimeout(doneTimerRef.current)
+    doneTimerRef.current = window.setTimeout(() => setDone(false), 1400)
+  }
+
+  const exportDaily = (): void => {
+    const stamp = exportDateStamp()
+    downloadText(`dsh-usage-${stamp}.csv`, dailyUsageCsv(props.usage), 'text/csv;charset=utf-8')
+    finish()
+  }
+  const exportModels = (): void => {
+    const stamp = exportDateStamp()
+    downloadText(`dsh-usage-models-${stamp}.csv`, modelUsageCsv(props.usage), 'text/csv;charset=utf-8')
+    finish()
+  }
+  const exportJson = (): void => {
+    const stamp = exportDateStamp()
+    downloadText(`dsh-usage-${stamp}.json`, fullUsageJson(props.usage), 'application/json;charset=utf-8')
+    finish()
+  }
+
+  return (
+    <div className="dq-export" ref={rootRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`dq-export-btn${done ? ' dq-export-btn--done' : ''}`}
+        aria-haspopup="true"
+        aria-expanded={open}
+        title="导出本机 DSH 会话日志聚合出的用量数据"
+        onClick={() => setOpen(value => !value)}
+      >
+        {done ? '已导出' : '导出'}
+      </button>
+      {open && (
+        <div ref={menuRef} className="dq-export-menu" aria-label="选择导出格式">
+          <button type="button" onClick={exportDaily}>
+            <span>逐天 CSV</span><small>{props.usage.daily.length} 行</small>
+          </button>
+          <button type="button" onClick={exportModels}>
+            <span>逐模型 CSV</span><small>{props.usage.models.length} 行</small>
+          </button>
+          <button type="button" onClick={exportJson}>
+            <span>完整 JSON</span><small>含图表与排行</small>
+          </button>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -766,7 +852,10 @@ export function BalanceDashboard(): ReactElement {
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">DSH 用量（tokens）</div>
+        <div className="dq-card-head">
+          <div className="dq-card-title">DSH 用量（tokens）</div>
+          {usage !== null && <ExportMenu usage={usage} />}
+        </div>
         {usage !== null ? (
           <>
             <div className="dq-usage-totals">

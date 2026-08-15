@@ -3,13 +3,14 @@
 ## 当前阶段
 
 用户要求继续迭代，轮次上限重置。当前状态：持续加功能并重新做真实界面审计。
-Judge 评分：交互 8.8 / 样式 8.7 / 功能 9.0。缺陷层面 P0、P1 已清空；剩余 P1 是 TODO 中尚未实现的候选功能。
+Judge 评分：交互 9.0 / 样式 8.8 / 功能 9.2。缺陷层面 P0、P1 已清空；剩余 P1 是 TODO 中尚未实现的候选功能。
 
 ## 假设（用户未指定方向时的合理假设）
 
 - 迭代方向 = 「加新功能为主，顺手打磨」，优先做 TODO.md 里 P0。
 - 「与 DSH 风格一致」= 走 `--dsw-alias-*` CSS 变量；本机实测 GUI 是**浅色**主题。
 - 费用估算的准确性算产品功能问题（不是代码质量问题），可以改 `src/usage.ts`。
+- 每个 commit 后立即部署：client-only 重新 build/typecheck 并硬刷新实测；host 改动还要重启 dsh、确认 active 与接口。
 
 ## 基线（轮次 0，2026-08-15）
 
@@ -84,6 +85,14 @@ Judge 评分：交互 8.8 / 样式 8.7 / 功能 9.0。缺陷层面 P0、P1 已�
 
 ## 已完成（续）
 
+- （轮次 20）`feat(dashboard)`: 导出用量报表。
+  用量卡新增导出菜单：逐天 CSV、逐模型 CSV、完整 JSON；文件日期使用北京时间，CSV 带 UTF-8 BOM、
+  RFC 4180 转义与表格公式注入防护，JSON 标记 `local-dsh-session-logs` 统计口径；菜单支持 Escape 回焦和下载成功反馈。
+  同轮确认悬浮窗无法通过公开 DSH API 切换 view：`shell.overlay` 无 owner actions，公开 `IConversation` 无 `setView`，按 TODO 约定不做 DOM hack。
+  证据：29/29 单测通过；build/typecheck exit 0；Playwright 捕获并读取 3 个真实下载：
+  `dsh-usage-20260815.csv` 30 行、`dsh-usage-models-20260815.csv` 2 行、JSON 30 天 / 2 模型且 scope 正确；
+  Escape 关闭菜单并把焦点还给导出按钮；正常路径控制台 0 错误、pageerror 0。
+
 - （轮次 19）`fix(widget)`: 额度页自动避让悬浮窗。
   完整仪表盘挂载时通过内存态 presence store 让悬浮窗淡出、`visibility:hidden`、禁用 pointer events 并标记 `aria-hidden`；
   退出额度页后恢复用户原有的持久化显示开关、角落与收起状态，设置文案同步解释作用域。
@@ -131,6 +140,6 @@ Judge 评分：交互 8.8 / 样式 8.7 / 功能 9.0。缺陷层面 P0、P1 已�
 
 ## 若继续，下一轮会做
 
-1. 悬浮窗点击直达「额度」tab（P1）：确认 DSH 的 view 切换 API 是否对插件开放。
+1. 统计覆盖度诊断（P1）：说明本机日志口径、扫描范围与解析缺口。
 2. 模型下拉补 Escape 关闭（P2）。
 3. 评估一年热力图的扫读密度，或实现可切换统计周期（P1）。
