@@ -191,31 +191,6 @@ export interface UsageWindow {
   sessionCount: number
 }
 
-export interface UsageAnomaly {
-  date: string
-  total: number
-  cost: number
-  calls: number
-  /** Mean cost of active days in the preceding seven calendar days. */
-  baselineCost: number
-  baselineDays: number
-  multiple: number
-  model: {
-    provider: string
-    model: string
-    total: number
-    cost: number
-    calls: number
-  }
-  session: {
-    id: string
-    title: string
-    total: number
-    cost: number
-    calls: number
-  }
-}
-
 export interface UsageData {
   daily: DailyUsage[]
   hourly: HourlyUsage[]
@@ -231,8 +206,6 @@ export interface UsageData {
   sessionCount: number
   coverage: UsageCoverage
   windows: UsageWindow[]
-  /** Newest first, capped to recent cost spikes within the 365-day history. */
-  anomalies: UsageAnomaly[]
 }
 
 export interface UsageResponse {

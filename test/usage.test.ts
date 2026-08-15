@@ -189,46 +189,6 @@ test('usage replay builds consistent 7, 30, 90, and 365 day windows', async () =
   assert.deepEqual(periods.map(days => windows.get(days)?.sessions[0]?.calls), [1, 2, 2, 3])
   assert.deepEqual(periods.map(days => windows.get(days)?.sessionCount), [1, 1, 1, 1])
   assert.equal(response.data.totals.calls, 4)
-  assert.equal(response.data.anomalies.length, 0)
-})
-
-test('usage replay flags a cost spike and attributes its top model and session', async () => {
-  const now = localTime(20, 16)
-  const baselineEvents: SessionEventFace[] = [
-    { type: 'session/title', data: { title: '日常会话' } },
-    { type: 'request/header', data: { header: { config: { provider: 'deepseek', model: 'deepseek-v4-pro' } } } },
-    ...[17, 18].flatMap(day => Array.from({ length: 5 }, (_, index) => ({
-      type: 'assistant/message',
-      time: localTime(day, 10) + index * 1_000,
-      data: { usage: { inputTokens: 200_000 } },
-    } satisfies SessionEventFace))),
-    { type: 'assistant/message', time: localTime(19, 10), data: { usage: { inputTokens: 1_000_000 } } },
-  ]
-  const spikeEvents: SessionEventFace[] = [
-    { type: 'session/title', data: { title: '批量 Flash 任务' } },
-    { type: 'request/header', data: { header: { config: { provider: 'deepseek', model: 'deepseek-v4-flash' } } } },
-    { type: 'assistant/message', time: localTime(19, 11), data: { usage: { inputTokens: 10_000_000 } } },
-  ]
-  const persistence: SessionPersistenceFace = {
-    list: async () => [{ id: 'baseline' }, { id: 'spike' }],
-    readFrom: async id => ({ events: id === 'baseline' ? baselineEvents : spikeEvents }),
-  }
-
-  const response = await fetchUsage(persistence, now)
-  assert.equal(response.ok, true)
-  assert.ok(response.data)
-  assert.equal(response.data.anomalies.length, 1)
-  const anomaly = response.data.anomalies[0]
-  assert.equal(anomaly.date, dayKey(localTime(19, 10)))
-  assert.equal(anomaly.baselineDays, 2)
-  closeTo(anomaly.baselineCost, 3)
-  closeTo(anomaly.cost, 13)
-  closeTo(anomaly.multiple, 13 / 3)
-  assert.equal(anomaly.model.model, 'deepseek-v4-flash')
-  closeTo(anomaly.model.cost, 10)
-  assert.equal(anomaly.session.id, 'spike')
-  assert.equal(anomaly.session.title, '批量 Flash 任务')
-  closeTo(anomaly.session.cost, 10)
 })
 
 test('usage replay reports unavailable services and list failures', async () => {

@@ -13,7 +13,7 @@ import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } fro
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
-import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageAnomaly, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
+import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
 import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
@@ -244,40 +244,6 @@ function CoverageDiagnostics(props: { coverage: UsageCoverage }): ReactElement {
         )}
       </div>
     </details>
-  )
-}
-
-/** Explain a detected spike where the user is already reading the daily chart. */
-function AnomalyNotice(props: { anomalies: UsageAnomaly[] }): ReactElement | null {
-  const anomaly = props.anomalies[0]
-  if (anomaly === undefined) return null
-  const modelName = anomaly.model.model !== '' ? anomaly.model.model : '未知模型'
-  const sessionTitle = anomaly.session.title !== '' ? anomaly.session.title : anomaly.session.id
-  const modelShare = anomaly.cost > 0 ? Math.round((anomaly.model.cost / anomaly.cost) * 100) : 0
-  const sessionShare = anomaly.cost > 0 ? Math.round((anomaly.session.cost / anomaly.cost) * 100) : 0
-
-  return (
-    <div className="dq-anomaly" role="status">
-      <div className="dq-anomaly-head">
-        <strong>检测到异常消耗</strong>
-        <span>{anomaly.date} · ¥{fmt(anomaly.cost)} · 日常基线的 {anomaly.multiple.toFixed(1)} 倍</span>
-      </div>
-      <p className="dq-anomaly-copy">
-        此前 7 天内 {anomaly.baselineDays} 个有用量日的日均费用为 ¥{fmt(anomaly.baselineCost)}；当天共调用 {fmtInt(anomaly.calls)} 次。
-      </p>
-      <dl className="dq-anomaly-breakdown">
-        <div>
-          <dt>主要模型</dt>
-          <dd title={modelName}>{modelName} · ¥{fmt(anomaly.model.cost)}（{modelShare}%）</dd>
-        </div>
-        <div>
-          <dt>主要会话</dt>
-          <dd title={`${sessionTitle} · ${anomaly.session.id}`}>{sessionTitle} · ¥{fmt(anomaly.session.cost)}（{sessionShare}%）</dd>
-        </div>
-      </dl>
-      {props.anomalies.length > 1 && <p className="dq-anomaly-more">当前周期另有 {props.anomalies.length - 1} 个异常日期，图表中均已标记。</p>}
-      <p className="dq-anomaly-rule">仅在至少 10 次历史调用、费用达到日常基线 2.5 倍且多出至少 ¥1 时提示，以减少低额波动噪音。</p>
-    </div>
   )
 }
 
@@ -850,15 +816,11 @@ export function BalanceDashboard(): ReactElement {
 
   const activeWindow = usage?.windows.find(window => window.days === windowDays) ?? null
   const activeWindowName = windowName(windowDays)
-  const activeDates = new Set((activeWindow?.daily ?? []).map(day => day.date))
-  const visibleAnomalies = (usage?.anomalies ?? []).filter(anomaly => activeDates.has(anomaly.date))
-  const anomalyDates = new Set(visibleAnomalies.map(anomaly => anomaly.date))
 
   const dailyBars = (activeWindow?.daily ?? []).map(d => ({
     label: windowDays === 365 ? d.date.slice(5).replace('-', '/') : d.date.slice(8, 10),
     value: chartMetricValue(chartMetric, d),
-    warning: anomalyDates.has(d.date),
-    title: `${anomalyDates.has(d.date) ? '异常消耗 · ' : ''}${d.date} · ${fmtInt(d.total)} tokens · ¥${fmt(d.cost)} · ${d.calls} 次调用`,
+    title: `${d.date} · ${fmtInt(d.total)} tokens · ¥${fmt(d.cost)} · ${d.calls} 次调用`,
   }))
   const hourlyBars = (activeWindow?.hourly ?? []).map(h => ({
     label: String(h.hour),
@@ -898,12 +860,11 @@ export function BalanceDashboard(): ReactElement {
         name,
         color,
         bars: (m?.daily ?? []).map((p, i) => ({
-          warning: anomalyDates.has((activeWindow?.daily ?? [])[i]?.date ?? ''),
           label: windowDays === 365
             ? ((activeWindow?.daily ?? [])[i]?.date.slice(5).replace('-', '/') ?? '')
             : ((activeWindow?.daily ?? [])[i]?.date.slice(8, 10) ?? ''),
           value: chartMetricValue(chartMetric, p),
-          title: `${anomalyDates.has((activeWindow?.daily ?? [])[i]?.date ?? '') ? '异常消耗 · ' : ''}${name} · ${(activeWindow?.daily ?? [])[i]?.date ?? ''} · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
+          title: `${name} · ${(activeWindow?.daily ?? [])[i]?.date ?? ''} · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
         })),
       }
     }
@@ -1050,7 +1011,6 @@ export function BalanceDashboard(): ReactElement {
               <Stat label="缓存命中"><div className="dq-stat-value">{fmtCompact(activeWindow.totals.cache)}</div></Stat>
               <Stat label="模型调用"><div className="dq-stat-value">{fmtInt(activeWindow.totals.calls)}</div></Stat>
             </div>
-            <AnomalyNotice anomalies={visibleAnomalies} />
             <div className="dq-chart-block-head">
               <div className="dq-chart-title">
                 {barMode === 'daily'
