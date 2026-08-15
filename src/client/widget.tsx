@@ -369,9 +369,6 @@ export function QuotaWidget(): ReactElement | null {
             <span className="dsh-quota-grip" title={t('widget.dragGrip')}>⠇</span>
             <span className={dotClass} />
             <span className="dsh-quota-name">{t('widget.title')}</span>
-            {collapsed && primary !== null && (
-              <span className={`dsh-quota-collapsed-total${low ? ' dsh-quota-total--low' : ''}`}>{fmt(primary.total)} {primary.currency}</span>
-            )}
           </div>
           <div className="dsh-quota-actions">
             <button
@@ -403,6 +400,11 @@ export function QuotaWidget(): ReactElement | null {
             </button>
           </div>
         </div>
+        {collapsed && primary !== null && (
+          <div className="dsh-quota-collapsed-total-row">
+            <span className={`dsh-quota-collapsed-total${low ? ' dsh-quota-total--low' : ''}`}>{fmt(primary.total)} {primary.currency}</span>
+          </div>
+        )}
         {body}
       </div>
     </div>

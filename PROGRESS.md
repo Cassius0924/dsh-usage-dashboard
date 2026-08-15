@@ -87,6 +87,38 @@ UI 专项排版类 P1 暂无剩余，继续按 backlog 扫描排版层级、留�
 
 ## 已完成（续）
 
+- （轮次 34）`style(widget)`: 悬浮窗折叠态标题截断。
+  - Review / Critique：P1 收起态一行要同时容纳抓手 / 状态点 / 标题「DeepSeek 额度」/ 折叠总额「42.11 CNY」/
+    刷新 / 展开五组元素，只有 `.dsh-quota-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`
+    会收缩，其余全是 `flex:none`，标题被挤成「DeepSe…」——省空间的折叠反而牺牲了最需要保留的身份信息，
+    次要的总额数字倒毫发无损。功能扫描继续遵循排版优化方向，不涉及计价 / 统计口径。
+  - Act：把折叠总额从标题所在的 `.dsh-quota-header` 行移出，改成收起态下标题行正下方新增的独立一行
+    `.dsh-quota-collapsed-total-row`；标题行只保留抓手 / 状态点 / 完整标题 + 刷新 / 展开按钮，不再有第三个
+    元素挤占宽度，`.dsh-quota-name` 的 ellipsis 规则原样保留作兜底而非常态触发路径。折叠总额字号从 13px
+    提到 15px（不再需要为挤下同一行牺牲可读性），配色顺带把误用的 `--dsw-alias-brand-primary`（全仓库唯一
+    一处，未在 DESIGN_NOTES 常用变量表中）改回文档约定的 `--dsw-alias-state-business-primary`，回退值不变。
+    展开态、拖动、四角吸附、`collapsed` 持久化 key、reduced-motion 规则、额度 tab 页临时隐藏逻辑均未触碰。
+  - Verify：自测——42/42 单测、build、typecheck 全过 exit 0；Playwright 真实登录后测量：折叠态
+    `.dsh-quota-name` 的 `scrollWidth===clientWidth===104`（`nameTruncated:false`），标题完整显示
+    「DeepSeek 额度」，折叠总额行独立显示「42.11 CNY」，刷新与展开按钮均可见可点（点击刷新未抛错）；
+    再次点击展开后外观与文案回到轮次 13 的原样（剩余余额 / 今日消耗两行）。用 canvas 按 `.dsh-quota-name`
+    实际计算样式量出英文 `DeepSeek Usage` 文本宽度 123.09px，加上抓手 / 状态点 / 间距 / 操作区共需约 211.5px，
+    仍小于卡片 `max-width:270px` 减 padding/border 后的 240px 可用宽度，中英文折叠态均不会触发截断。
+    截图：`/tmp/dsh-widget-audit/expanded.png`、`collapsed.png`、`re-expanded.png`。唯一非注入 console error
+    是 `favicon.ico` 401（已用独立脚本复现，登录流程本身产生，与本轮改动无关，非新增）。
+    独立 QA：`git stash` 出改动前版本重新构建实测，改前 `.dsh-quota-name` `scrollWidth=104` 而 `clientWidth=70`
+    （确实截断），改后 `104===104`（不截断），坐实修复真实生效；从 DSH Settings → Language 真实切到 English
+    复测折叠态，`scrollWidth===clientWidth===123`，标题完整显示「DeepSeek Usage」，验证后切回中文并确认
+    `/root/.dsh/settings.yaml` 的 `locale.preference` 已还原为 `zh`。拖动到对角后精确贴合 `getBounds()` 排除
+    header/composer 后的可用区（`x=296`/`y=92`，与主列偏移 + 16px 边距的期望值逐像素吻合）；设为左上角 + 折叠
+    后硬刷新，两个 `localStorage` key 与渲染位置均保持；`prefers-reduced-motion:reduce` 下 `transitionProperty`
+    为 `none`，折叠/展开功能仍正常；切到「额度」tab `aria-hidden` 变 `true`，切回「对话」恢复 `false` 且位置/
+    折叠态不变。额外发现：`--dsw-alias-brand-primary`→`--dsw-alias-state-business-primary` 在本机实际主题下
+    并非纯改名——A/B 对比实测颜色从 `rgb(15,17,21)`（近黑，几乎融进正文文字不可读）变为 `rgb(65,118,230)`
+    （与仪表盘柱状图等既有 business-primary 用色一致），是顺带修掉的一个可读性缺陷，非引入新问题。
+    3 条 console error 在同一登录流程的空白页也会出现（favicon 401 + 2 条 Cordis 后台 inspect 失败），
+    与本轮改动无关；全程 pageerror 0。截图：`/tmp/dsh-ui-audit/round34-*.png`（含改动前对照 `round34-BEFORE-collapsed.png`）。
+
 - （轮次 33）`style(dashboard)`: 窄屏底部安全区。
   - Review / Critique：P1 DSH 固定输入框（composer）在 620px 及更窄视口下会覆盖长仪表盘底部，设置卡滚到底后
     仍可能被遮挡、输入框和按钮点不到；P2 之前 620px 下 `.dq-balance` 只有固定 `40px` 底部留白，与实际输入框

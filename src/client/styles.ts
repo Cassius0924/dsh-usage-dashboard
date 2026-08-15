@@ -16,7 +16,8 @@ export const css = `
 .dsh-quota-dot--warn{background:var(--dsw-alias-state-warning-primary,#bf8700)}
 .dsh-quota-total--low{color:var(--dsw-alias-state-warning-primary,#9a6700)!important}
 .dsh-quota-dot--idle{background:var(--dsw-alias-label-secondary,#59636e);opacity:.6}
-.dsh-quota-collapsed-total{font-weight:700;font-size:13px;color:var(--dsw-alias-brand-primary,#0969da);flex:none;font-variant-numeric:tabular-nums}
+.dsh-quota-collapsed-total-row{margin-top:6px}
+.dsh-quota-collapsed-total{font-weight:700;font-size:15px;color:var(--dsw-alias-state-business-primary,#0969da);font-variant-numeric:tabular-nums}
 .dsh-quota-actions{display:flex;gap:2px;flex:none}
 .dsh-quota-btn{border:none;background:transparent;cursor:pointer;color:var(--dsw-alias-label-secondary,#59636e);padding:3px 7px;border-radius:6px;font-size:13px;line-height:1}
 .dsh-quota-btn:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.06));color:var(--dsw-alias-label-primary,#1f2328)}
