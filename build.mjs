@@ -10,7 +10,13 @@
  */
 import { build } from 'esbuild'
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+
+// The web module loader addresses client bundles by package name, so the id in
+// the handshake below must be the package's own name — derive it rather than
+// repeating it, or renaming the package silently unregisters the client half
+// (and stalls the boot graph waiting for a module that never arrives).
+const { name: packageName } = JSON.parse(readFileSync('package.json', 'utf8'))
 
 rmSync('lib', { recursive: true, force: true })
 mkdirSync('lib', { recursive: true })
@@ -42,7 +48,7 @@ await build({
   jsx: 'automatic',
   external: [...dshExternal, 'react', 'react-dom', 'react/jsx-runtime', 'react/jsx-dev-runtime'],
   banner: {
-    js: "window.__ModuleLoader__.load({ id: 'dsh-usage-dashboard', factory: (require) => { var module = { exports: {} }; var exports = module.exports;",
+    js: `window.__ModuleLoader__.load({ id: ${JSON.stringify(packageName)}, factory: (require) => { var module = { exports: {} }; var exports = module.exports;`,
   },
   footer: {
     js: 'return module.exports; } });',

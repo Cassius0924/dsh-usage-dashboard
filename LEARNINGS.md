@@ -12,5 +12,12 @@
 - **首次进入会弹 “Internal Testing Notice” 模态**，截图前要先点 Continue。
 - **usage 接口首刷约 4.8s**（要重放所有会话日志），UI 必须按「慢接口」设计加载态。
 - **本机 DSH GUI 实际是浅色主题**，不是深色；样式必须走 `--dsw-alias-*` CSS 变量，不能硬编码深色底色。
+- **改包名会连带三处**，漏一处就静默坏掉：
+  1. `cordis.patch.yml` 的 `name`（loader 解析用的模块标识符）；
+  2. `build.mjs` banner 里 `__ModuleLoader__.load({ id })` —— **必须等于包名**，
+     否则 host 半边一切正常（API 全 200、bundle 也能 200 拉到），但客户端半边不注册，
+     **整个 GUI 启动图会卡住**（侧栏都不出来）。现已改为从 package.json 读取，不再手写。
+  3. profile 的 `package.json`：`dependencies` 的 key 和 `dsh.profile.bundles` 两处都要改，然后 `pnpm install`。
+  客户端包的 URL 也随包名走：`/plugins/<包名>/client.js`（作用域包含 `@scope/`）。
 - 截图脚本：`/tmp/claude-0/.../scratchpad/shot.mjs`（playwright 从 `/root/.npm/_npx/e41f203b7505f1fb/node_modules/` 取，
   需 `PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright` 且清空 `HTTP(S)_PROXY`）。

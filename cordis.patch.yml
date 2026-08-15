@@ -7,4 +7,4 @@
 #     serves their `./client` bundle into the web boot graph.
 - insert:
     - id: dsh-usage-dashboard
-      name: dsh-usage-dashboard
+      name: '@cassius0924/dsh-usage-dashboard'

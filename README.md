@@ -104,7 +104,10 @@ DeepSeek 从 2026-08-17 00:00 起改峰谷定价，高峰（北京时间 09:00�
 标准 DSH 插件包（bundle + client 双面包），用 `dsh plugin` 装：
 
 ```sh
-# 从 GitHub 安装
+# 从 npm 安装
+dsh plugin --profile web add @cassius0924/dsh-usage-dashboard
+
+# 或从 GitHub（git 依赖会跑 prepare 脚本现场构建）
 dsh plugin --profile web add github:Cassius0924/dsh-usage-dashboard
 
 # 或本地 checkout
