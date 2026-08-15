@@ -1,3 +1,9 @@
 node_modules/
 lib/
 *.log
+
+# Scratch dev notes — working state for whoever's driving, not shipped docs.
+/TODO.md
+/DESIGN_NOTES.md
+/PROGRESS.md
+/LEARNINGS.md
