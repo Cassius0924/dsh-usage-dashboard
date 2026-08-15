@@ -1,0 +1,60 @@
+name: Publish to npm
+
+# GitHub Release published -> build + publish via npm Trusted Publishing (OIDC).
+# No NPM_TOKEN anywhere: npm exchanges this workflow run's OIDC id-token for a
+# short-lived publish credential, authorized by the Trusted Publisher entry
+# configured on the package's npmjs.com settings page (see README/CI notes for
+# the exact values that entry must have — repo, workflow filename, environment).
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write # required for npm OIDC — nothing else needs elevated perms
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      # Trusted Publishing needs npm >= 11.5.1; pin past whatever setup-node's
+      # bundled npm happens to be so this doesn't silently fall back to
+      # asking for a token.
+      - name: Ensure npm supports Trusted Publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # A release tagged v1.2.3 must ship package.json version 1.2.3 — catches
+      # "tagged the wrong commit" / "forgot to bump" before it reaches npm.
+      - name: Verify release tag matches package.json version
+        run: |
+          tag="${{ github.event.release.tag_name }}"
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Release tag ($tag) does not match package.json version ($version)"
+            exit 1
+          fi
+
+      - name: Publish
+        run: npm publish --provenance --access public
