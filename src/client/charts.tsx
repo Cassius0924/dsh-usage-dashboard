@@ -143,14 +143,12 @@ function heatColor(level: number): string {
   return 'rgba(65,118,230,1)'
 }
 
-/** Row 0 is Sunday, matching Date#getDay(); only alternate rows are labelled
- *  so the column stays readable at 12px cells. */
-const DOW_LABELS = ['', '一', '', '三', '', '五', '']
-
 /**
- * Calendar heatmap with the axes it was missing: weekday labels down the left,
- * month labels along the top (drawn where a column starts a new month) and a
- * 少→多 scale legend, so a cell can actually be located in time.
+ * Calendar heatmap: one flex column per week, cells filling the card's full
+ * width (rather than a fixed pixel size hugging the left edge), month labels
+ * below the grid and a 少→多 scale legend — modelled on Codex's activity
+ * graph. No weekday row: at this cell count a day is identified by hovering
+ * it, not by which row it sits in.
  */
 export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
   const { data } = props
@@ -189,33 +187,28 @@ export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
 
   return (
     <div className="dq-heat dq-chart-wrap" ref={wrapRef} onPointerLeave={hide}>
-      <div className="dq-heat-grid">
-        <div className="dq-heat-dows" aria-hidden="true">
-          {DOW_LABELS.map((label, i) => <div key={i} className="dq-heat-dow">{label}</div>)}
+      <div className="dq-heat-scroll">
+        <div className="dq-heatmap">
+          {weeks.map((week, w) => (
+            <div key={w} className="dq-heat-week">
+              {week.map((datum, d) => {
+                if (datum === null) return <div key={d} className="dq-heat-cell dq-heat-cell--pad" />
+                const text = `${datum.date} · ${datum.total.toLocaleString()} tokens · ¥${datum.cost.toFixed(2)} · ${datum.calls} 次调用`
+                return (
+                  <div
+                    key={d}
+                    className="dq-heat-cell"
+                    style={{ background: heatColor(levelOf(datum.total)) }}
+                    aria-label={text}
+                    onPointerMove={e => show(e, text)}
+                  />
+                )
+              })}
+            </div>
+          ))}
         </div>
-        <div className="dq-heat-cols">
-          <div className="dq-heat-months" aria-hidden="true">
-            {monthLabels.map((label, i) => <div key={i} className="dq-heat-month">{label}</div>)}
-          </div>
-          <div className="dq-heatmap">
-            {weeks.map((week, w) => (
-              <div key={w} className="dq-heat-week">
-                {week.map((datum, d) => {
-                  if (datum === null) return <div key={d} className="dq-heat-cell dq-heat-cell--pad" />
-                  const text = `${datum.date} · ${datum.total.toLocaleString()} tokens · ¥${datum.cost.toFixed(2)} · ${datum.calls} 次调用`
-                  return (
-                    <div
-                      key={d}
-                      className="dq-heat-cell"
-                      style={{ background: heatColor(levelOf(datum.total)) }}
-                      aria-label={text}
-                      onPointerMove={e => show(e, text)}
-                    />
-                  )
-                })}
-              </div>
-            ))}
-          </div>
+        <div className="dq-heat-months" aria-hidden="true">
+          {monthLabels.map((label, i) => <div key={i} className="dq-heat-month">{label}</div>)}
         </div>
       </div>
       <ChartTip tip={tip} />

@@ -97,7 +97,7 @@ test('usage replay aggregates totals, periods, models, sessions, and pricing pro
 
   assert.equal(data.daily.length, 30)
   assert.equal(data.hourly.length, 24)
-  assert.equal(data.heatmap.length, 84)
+  assert.equal(data.heatmap.length, 364)
   const today = data.daily.find(point => point.date === dayKey(now))
   const previous = data.daily.find(point => point.date === dayKey(yesterday))
   assert.deepEqual(today && {
