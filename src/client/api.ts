@@ -68,27 +68,52 @@ export const subscribeUsage = (fn: () => void): (() => void) => {
   }
 }
 
+// Non-force calls made while an identical one is already in flight join it
+// instead of firing a second request — the case that matters is the
+// preload kicked off at plugin load (see index.tsx) landing moments before
+// the widget's or the dashboard's own mount-time fetch. `force` (the
+// refresh button) always fires its own request, since the user asked for a
+// bypass specifically.
+let balanceInflight: Promise<BalanceResponse> | null = null
+let usageInflight: Promise<UsageResponse> | null = null
+
 export async function fetchBalance(force = false): Promise<BalanceResponse> {
   if (!force) {
     const hit = balanceCache.getFresh()
     if (hit !== null) return hit
+    if (balanceInflight !== null) return balanceInflight
   }
   const suffix = force ? '?refresh=1' : ''
-  const res = await getJson<BalanceResponse>(`/api/dsh-usage-dashboard/balance${suffix}`, force ? 'no-store' : 'default')
-  if (res.ok) balanceCache.put(res)
-  return res
+  const task = getJson<BalanceResponse>(`/api/dsh-usage-dashboard/balance${suffix}`, force ? 'no-store' : 'default')
+    .then(res => {
+      if (res.ok) balanceCache.put(res)
+      return res
+    })
+  if (!force) {
+    balanceInflight = task.finally(() => { balanceInflight = null })
+    return balanceInflight
+  }
+  return task
 }
 
 export async function fetchUsage(force = false): Promise<UsageResponse> {
   if (!force) {
     const hit = usageCache.getFresh()
     if (hit !== null) return hit
+    if (usageInflight !== null) return usageInflight
   }
   const suffix = force ? '?refresh=1' : ''
-  const res = await getJson<UsageResponse>(`/api/dsh-usage-dashboard/usage${suffix}`, force ? 'no-store' : 'default')
-  if (res.ok) {
-    usageCache.put(res)
-    for (const listener of [...usageListeners]) listener()
+  const task = getJson<UsageResponse>(`/api/dsh-usage-dashboard/usage${suffix}`, force ? 'no-store' : 'default')
+    .then(res => {
+      if (res.ok) {
+        usageCache.put(res)
+        for (const listener of [...usageListeners]) listener()
+      }
+      return res
+    })
+  if (!force) {
+    usageInflight = task.finally(() => { usageInflight = null })
+    return usageInflight
   }
-  return res
+  return task
 }

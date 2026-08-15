@@ -5,6 +5,7 @@
  */
 import { ErrorBoundary } from './boundary.tsx'
 import type { ClientContext } from './context.ts'
+import { fetchBalance, fetchUsage } from './api.ts'
 import { BalanceDashboard } from './dashboard.tsx'
 import { css } from './styles.ts'
 import { QuotaWidget } from './widget.tsx'
@@ -28,6 +29,16 @@ export function apply(ctx: ClientContext): void {
     tag.textContent = css
     document.head.appendChild(tag)
   }
+
+  // Warm both caches the moment the client bundle loads, rather than waiting
+  // for the 「额度」 tab to mount. Usage aggregation alone takes seconds (it
+  // replays every session log), so without this the tab's first open always
+  // paid that latency; with it, by the time someone actually clicks the tab
+  // the fetch has usually already landed and the tab renders from cache. Not
+  // awaited and not surfaced: a failure here just leaves the widget/tab to
+  // fetch (and report) it themselves on mount, same as before this existed.
+  void fetchBalance().catch(() => {})
+  void fetchUsage().catch(() => {})
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register(
     { name: 'shell.overlay', id: 'deepseek-quota', order: 1000, label: 'DeepSeek 额度' },
