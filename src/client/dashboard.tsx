@@ -7,9 +7,10 @@
  */
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
+import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageData } from '../contract.ts'
-import { lowBalanceStore, widgetVisibleStore } from './store.ts'
+import { lowBalanceStore, monthlyBudgetStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
 function Skel(props: { w: number; h: number }): ReactElement {
@@ -82,6 +83,51 @@ function Period(props: {
       </div>
       <div className="dq-period-cost">¥ {fmt(period.cost)}</div>
       <div className="dq-period-sub">{fmtCompact(period.total)} tokens · {fmtInt(period.calls)} 次调用</div>
+    </div>
+  )
+}
+
+/** Monthly guardrail, kept inside the overview rather than adding another card. */
+function BudgetMeter(props: { spent: number; budget: number; onConfigure: () => void }): ReactElement {
+  if (props.budget <= 0) {
+    return (
+      <div className="dq-budget dq-budget--unset">
+        <span>还没设置月度预算，无法提前判断是否会超支。</span>
+        <button type="button" className="dq-budget-action" onClick={props.onConfigure}>设置预算</button>
+      </div>
+    )
+  }
+
+  const snapshot = budgetSnapshot(props.spent, props.budget)
+  const usedPercent = snapshot.ratio * 100
+  const barPercent = Math.min(100, usedPercent)
+  const forecastText = snapshot.status === 'over'
+    ? `已超预算 ¥${fmt(Math.abs(snapshot.remaining))}`
+    : snapshot.forecastOver > 0
+      ? `照当前速度，预计超出 ¥${fmt(snapshot.forecastOver)}`
+      : `照当前速度，预计月底 ¥${fmt(snapshot.forecast)}`
+
+  return (
+    <div className={`dq-budget dq-budget--${snapshot.status}`}>
+      <div className="dq-budget-head">
+        <span className="dq-budget-title">本月预算</span>
+        <span className="dq-budget-amount">¥ {fmt(snapshot.spent)} / ¥ {fmt(snapshot.budget)}</span>
+      </div>
+      <div
+        className="dq-budget-track"
+        role="progressbar"
+        aria-label="本月预算使用进度"
+        aria-valuemin={0}
+        aria-valuemax={snapshot.budget}
+        aria-valuenow={Math.min(snapshot.spent, snapshot.budget)}
+        aria-valuetext={`已使用 ${usedPercent.toFixed(1)}%，${forecastText}`}
+      >
+        <div className="dq-budget-fill" style={{ transform: `scaleX(${barPercent / 100})` }} />
+      </div>
+      <div className="dq-budget-meta">
+        <span>{snapshot.remaining >= 0 ? `剩余 ¥${fmt(snapshot.remaining)}` : `超出 ¥${fmt(Math.abs(snapshot.remaining))}`}</span>
+        <span>{forecastText}</span>
+      </div>
     </div>
   )
 }
@@ -433,8 +479,10 @@ export function BalanceDashboard(): ReactElement {
   const hadDataRef = useRef(cachedBalance !== null || cachedUsage !== null)
   const [widgetOn, setWidgetOn] = useState(widgetVisibleStore.get())
   const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
+  const [monthlyBudget, setMonthlyBudget] = useState(monthlyBudgetStore.get())
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
   const [selectedModels, setSelectedModels] = useState<string[]>([])
+  const budgetInputRef = useRef<HTMLInputElement | null>(null)
 
   const errText = (err: unknown): string => (err as { message?: string } | null)?.message ?? String(err)
 
@@ -493,6 +541,11 @@ export function BalanceDashboard(): ReactElement {
   const changeLowBalance = (value: number): void => {
     setLowBalance(value)
     lowBalanceStore.set(value)
+  }
+
+  const changeMonthlyBudget = (value: number): void => {
+    setMonthlyBudget(value)
+    monthlyBudgetStore.set(value)
   }
 
   const primary = balance !== null && balance.balances.length > 0 ? balance.balances[0] : null
@@ -662,6 +715,13 @@ export function BalanceDashboard(): ReactElement {
           </div>
         ) : (
           <div className="dq-empty">还没有可统计的消耗。</div>
+        )}
+        {usage !== null && (
+          <BudgetMeter
+            spent={usage.summary.month.cost}
+            budget={monthlyBudget}
+            onConfigure={() => budgetInputRef.current?.focus()}
+          />
         )}
         {usage !== null && <PricingNote pricing={usage.pricing} />}
       </div>
@@ -834,6 +894,27 @@ export function BalanceDashboard(): ReactElement {
               {lowBalance > 0
                 ? `余额低于 ${fmt(lowBalance)} ${primary?.currency ?? 'CNY'} 时，这里和悬浮窗都会转为警示色。填 0 关闭。`
                 : '已关闭余额预警。填一个大于 0 的数开启。'}
+            </span>
+          </div>
+        </div>
+        <div className="dq-setting">
+          <label className="dq-setting-label" htmlFor="dq-monthly-budget">月度预算</label>
+          <div className="dq-setting-control">
+            <input
+              ref={budgetInputRef}
+              id="dq-monthly-budget"
+              className="dq-number"
+              type="number"
+              min={0}
+              step={10}
+              value={monthlyBudget}
+              aria-describedby="dq-monthly-budget-hint"
+              onChange={e => changeMonthlyBudget(Math.max(0, Number(e.target.value) || 0))}
+            />
+            <span id="dq-monthly-budget-hint" className="dq-setting-hint">
+              {monthlyBudget > 0
+                ? `按北京时间自然月跟踪 ${fmt(monthlyBudget)} CNY 预算，并在消耗概览预测月底花费。填 0 关闭。`
+                : '填一个大于 0 的金额，消耗概览会显示进度与月底预测。'}
             </span>
           </div>
         </div>

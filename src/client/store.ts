@@ -39,3 +39,6 @@ export const widgetVisibleStore = createStore<boolean>('widget.visible', isBoole
 /** Balance (in the account's own currency) below which both surfaces warn.
  *  0 turns the warning off. */
 export const lowBalanceStore = createStore<number>('alert.lowBalance', isThreshold, 10)
+
+/** Monthly estimated-cost budget in CNY. 0 leaves budget tracking disabled. */
+export const monthlyBudgetStore = createStore<number>('budget.monthly', isThreshold, 0)
