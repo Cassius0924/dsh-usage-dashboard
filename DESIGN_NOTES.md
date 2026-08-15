@@ -7,7 +7,8 @@
 - 常用变量：`--dsw-alias-bg-layer-1/2`、`--dsw-alias-bg-overlay`、`--dsw-alias-border-l1/l2`、
   `--dsw-alias-label-primary/secondary/tertiary`、`--dsw-alias-state-business-primary`（主色/链接）、
   `--dsw-alias-state-success-primary`、`--dsw-alias-state-error-primary`。
-- 卡片：`border-radius:12px`，1px 边框，`padding:16px`；卡片标题 12px / 600 / 次级色。
+- 卡片：`border-radius:12px`，1px 边框，`padding:16px`；卡片标题 12px / 600 / 次级色。这是全部卡片的基线，
+  额外的「主卡片」权重是在此基线上的加法修饰，不是另开一套规范。
 - 数字一律 `font-variant-numeric: tabular-nums`，避免刷新时抖动。
 - 类名前缀：悬浮窗 `dsh-quota-*`，仪表盘 `dq-*`。全部样式集中在 `src/client/styles.ts` 一张表里。
 
@@ -26,6 +27,15 @@
   最重要的数字"场景时，优先复用这一档字号字重组合，不要再新开一档只用一次的字号。
 - 同一张卡片内的一组同类对比指标不重复套浅底圆角小卡；用留白与 1px 分隔线表达比较关系，窄屏把垂直分隔
   转成水平分隔，减少“卡片套卡片”的视觉噪音。
+- 9 张卡片容器建立两档视觉权重（轮次 36），依据本节层级 1-3 与 4 划界，不新增第三档：
+  **主卡片**＝账户余额 / 消耗概览 / DSH 用量（层级 1-3，首屏必读），加 `.dq-card--primary` 修饰类，
+  在 `.dq-card` 基线上叠加 `padding:20px`（基线 16px）、边框换用更深的 `--dsw-alias-border-l2`
+  （基线 `--dsw-alias-border-l1`）、标题升到 `13px/700/label-primary`（基线 `12px/600/label-secondary`）；
+  **次级分析卡片**（高峰/闲时分布、缓存命中与节省、模型成本排行、会话成本排行——深入分析性质、非首屏必读）
+  与**导航/配置卡片**（官方平台、设置，层级 4）都不加修饰类，维持 `.dq-card` 原样，天然比主卡片轻。
+  两条 `.dq-card--primary` 规则都只调已有排版属性（内边距 / 标题字号字重取色 / 边框深浅变量档位），不新增
+  背景色板或强调色；未来新增卡片时先判断信息层级属于 1-3 还是 4，再决定要不要挂这个修饰类，不要为
+  中间层级另开新档。
 
 ## 交互约定
 

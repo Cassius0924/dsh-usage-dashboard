@@ -87,6 +87,31 @@ UI 专项排版类 P1 暂无剩余，继续按 backlog 扫描排版层级、留�
 
 ## 已完成（续）
 
+- （轮次 36）`style(dashboard)`: 卡片容器视觉权重分级。
+  - Review / Critique：P1 全站 9 张卡片共用同一套 `.dq-card{padding:16px}` / `.dq-card-title{font-size:12px;
+    font-weight:600}`，眯眼测试下 9 张卡片是完全等重的灰边圆角方块序列，DESIGN_NOTES「信息层级」写明的
+    1 余额 2 今日/本月消耗 3 累计用量统计+图表 4 官方链接/开关沉底 四级层次在视觉上被拉平成"卡片列表"
+    一级层次，看不出账户余额与「官方平台」孰轻孰重。功能扫描继续遵循用户方向，只调卡片容器/标题排版，
+    不碰计价/统计口径、不合并「官方平台」、不拆分「DSH 用量」、不改卡片顺序。
+  - Act：给对应层级 1-3 的账户余额、消耗概览、DSH 用量三张卡片加修饰类 `.dq-card--primary`，在 `.dq-card`
+    基线上叠加 `padding:20px`（基线 16px）、边框换用更深一档的 `--dsw-alias-border-l2`（基线
+    `--dsw-alias-border-l1`）、标题升到 `13px/700/label-primary`（基线 `12px/600/label-secondary`）；
+    高峰/闲时分布、缓存命中与节省、模型成本排行榜、会话成本排行四张次级分析卡片与官方平台、设置两张
+    导航/配置卡片都不加修饰类，维持 `.dq-card` 原样不受影响，形成两档权重。全程只用已有 CSS 变量和已在
+    本站其他卡片状元素上出现过的回退值，未新增背景色板或强调色；两条新规则与既有场景覆盖规则同特异度，
+    靠源码顺序覆盖，不加 `!important`。
+  - Verify：42/42 单测、build、typecheck 全过（exit 0）；`lib/client.js` 内确认 `.dq-card--primary` 规则与
+    3 处 JSX className 均正确打包，其余 6 张卡片的 className 未被改动。独立 QA：1440/1024/620/390 四档视口
+    程序化断言主卡片 `padding-top:20px`/标题 `13px/700/rgb(15,17,21)`，次级卡片 `padding-top:16px`/标题
+    `12px/600/rgb(97,102,107)`，两档边框色也不同，四档视口分级效果一致（非响应式规则，天然不受断点影响）；
+    「DSH 用量」卡片头部在 1440/1024px 下 `nowrap` 无重叠溢出，620px 下按既有规则换行、操作区独占一行仍不
+    溢出。回归覆盖：模型筛选下拉开合、统计周期 7/30/90/365 切换、导出菜单开合、覆盖诊断 disclosure、图表
+    hover tooltip、键盘 Tab+ArrowLeft、触屏 tap 固定 tooltip、缓存命中进度条实际宽度、会话排行渲染、余额
+    明细 disclosure 键盘 Enter，均正常；`prefers-reduced-motion:reduce` 下功能不受影响；中英文切换后主卡片
+    标题不换行不溢出。QA 过程中先暴露出 4 处自身脚本选择器错误（非产品 bug），修正后复测全部通过。
+    console error 3 条均为既有已知噪音（401/Cordis 后台同步失败），pageerror 0。截图：`/tmp/dsh-ui-audit/
+    round36-crop-primary-balance.png` 对比 `round36-crop-secondary-{peak,cache}.png`、四档视口全页图等。
+
 - （轮次 35）`style(dashboard)`: 账户余额数字独立视觉权重。
   - Review / Critique：P1 DESIGN_NOTES 信息层级第一条明确要求余额为「最大号数字，24px 级」，但账户余额、
     「近30天输入/输出/缓存命中」等次要分解数字全部复用同一个 `.dq-stat-value{font-size:18px;font-weight:650}`，

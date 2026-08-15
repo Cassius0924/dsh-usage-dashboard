@@ -1018,7 +1018,7 @@ export function BalanceDashboard(): ReactElement {
         </div>
       )}
 
-      <div className="dq-card">
+      <div className="dq-card dq-card--primary">
         <div className="dq-card-title">{t('balance.title')}</div>
         {primary !== null ? (
           <div className="dq-balance-grid">
@@ -1054,7 +1054,7 @@ export function BalanceDashboard(): ReactElement {
         )}
       </div>
 
-      <div className="dq-card">
+      <div className="dq-card dq-card--primary">
         <div className="dq-card-title">{t('overview.title')}</div>
         {usage !== null ? (
           <div className="dq-period-grid">
@@ -1087,7 +1087,7 @@ export function BalanceDashboard(): ReactElement {
         {usage !== null && <PricingNote pricing={usage.pricing} />}
       </div>
 
-      <div className="dq-card">
+      <div className="dq-card dq-card--primary">
         <div className="dq-card-head">
           <div className="dq-card-title">{t('usage.title')}</div>
           {usage !== null && (

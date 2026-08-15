@@ -39,6 +39,12 @@ export const css = `
 .dq-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .dq-card-head .dq-card-title{margin:0}
 .dq-card-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
+/* 主卡片（余额/消耗概览/DSH 用量）视觉权重高于次级分析卡片与导航类卡片：只调排版属性——内边距、
+   标题字号字重与取色、边框深浅——不引入新配色体系。两条规则与上面的基础规则同为单类选择器且源码顺序
+   更靠后，天然覆盖，不需要 !important。次级分析卡片（高峰闲时/缓存命中/模型排行/会话排行）与导航类
+   卡片（官方平台/设置）都不加这个修饰类，维持原有 .dq-card 基线，形成两档权重。 */
+.dq-card--primary{padding:20px;border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.12))}
+.dq-card--primary .dq-card-title{font-size:13px;font-weight:700;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-window-switch{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.08))}
 .dq-window-btn{border:0;border-radius:6px;padding:4px 8px;background:transparent;color:var(--dsw-alias-label-secondary,#59636e);font-size:11.5px;white-space:nowrap;cursor:pointer;transition:background .15s ease,color .15s ease,box-shadow .15s ease}
 .dq-window-btn:hover{color:var(--dsw-alias-label-primary,#1f2328)}
