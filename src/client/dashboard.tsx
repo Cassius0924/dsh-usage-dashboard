@@ -43,8 +43,8 @@ function BalanceSkeleton(): ReactElement {
   )
 }
 
-/** Placeholder for the usage card: replaying every session log takes seconds,
- *  and an empty-state string there would read as "you have no usage". */
+/** Placeholder for the usage trend card: replaying every session log takes
+ *  seconds, and an empty-state string there would read as "you have no usage". */
 function UsageSkeleton(): ReactElement {
   return (
     <>
@@ -57,6 +57,22 @@ function UsageSkeleton(): ReactElement {
       <div className="dq-skel-bars">
         {Array.from({ length: 30 }, (_, i) => (
           <div key={i} className="dq-skel dq-skel-bar" style={{ height: `${18 + ((i * 37) % 82)}px` }} />
+        ))}
+      </div>
+    </>
+  )
+}
+
+/** Placeholder for the heatmap card, same loading grammar as the trend card's
+ *  bar skeleton above — the heatmap has no separate fetch, it just renders
+ *  once `usage` lands, so the two cards share one loading vocabulary. */
+function HeatmapSkeleton(): ReactElement {
+  return (
+    <>
+      <Skel w={140} h={12} />
+      <div className="dq-skel-bars" style={{ height: '88px' }}>
+        {Array.from({ length: 52 }, (_, i) => (
+          <div key={i} className="dq-skel dq-skel-bar" style={{ height: `${14 + ((i * 29) % 60)}px` }} />
         ))}
       </div>
     </>
@@ -1089,7 +1105,7 @@ export function BalanceDashboard(): ReactElement {
 
       <div className="dq-card dq-card--primary">
         <div className="dq-card-head">
-          <div className="dq-card-title">{t('usage.title')}</div>
+          <div className="dq-card-title">{t('usage.trendTitle')}</div>
           {usage !== null && (
             <div className="dq-card-actions">
               <UsageWindowPicker value={windowDays} onChange={changeWindowDays} />
@@ -1161,12 +1177,24 @@ export function BalanceDashboard(): ReactElement {
             ) : (
               <Bars data={hourlyBars} height={100} labelEvery={3} />
             )}
-            <div className="dq-chart-title">{t('chart.heatmapTitle')}</div>
-            <Heatmap data={usage.heatmap} />
             <CoverageDiagnostics coverage={usage.coverage} />
           </>
         ) : loadingUsage ? (
           <UsageSkeleton />
+        ) : (
+          <div className="dq-empty">{t('chart.empty')}</div>
+        )}
+      </div>
+
+      <div className="dq-card">
+        <div className="dq-card-title">{t('heatmap.title')}</div>
+        {usage !== null ? (
+          <>
+            <div className="dq-chart-title">{t('chart.heatmapTitle')}</div>
+            <Heatmap data={usage.heatmap} />
+          </>
+        ) : loadingUsage ? (
+          <HeatmapSkeleton />
         ) : (
           <div className="dq-empty">{t('chart.empty')}</div>
         )}
