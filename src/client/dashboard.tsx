@@ -5,13 +5,13 @@
  * refresh then updates it without blocking; a full-screen 加载中 only
  * appears when nothing has ever been cached.
  */
-import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import { syncStatusText, type SyncState } from './freshness.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageData } from '../contract.ts'
-import { lowBalanceStore, monthlyBudgetStore, widgetVisibleStore } from './store.ts'
+import { lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
 function Skel(props: { w: number; h: number }): ReactElement {
@@ -489,6 +489,14 @@ export function BalanceDashboard(): ReactElement {
   const [selectedModels, setSelectedModels] = useState<string[]>([])
   const budgetInputRef = useRef<HTMLInputElement | null>(null)
 
+  // The full dashboard and the floating summary should never compete for the
+  // same pixels. This does not touch the persisted widget preference: leaving
+  // the tab restores it exactly as the user left it.
+  useLayoutEffect(() => {
+    quotaViewActiveStore.set(true)
+    return () => quotaViewActiveStore.set(false)
+  }, [])
+
   const errText = (err: unknown): string => (err as { message?: string } | null)?.message ?? String(err)
 
   /** Load both resources; each resolves to null on success or to its error
@@ -907,8 +915,9 @@ export function BalanceDashboard(): ReactElement {
         <div className="dq-card-title">设置</div>
         <label className="dq-toggle">
           <input type="checkbox" checked={widgetOn} onChange={toggle} />
-          <span>显示右下角悬浮额度窗口</span>
+          <span>在其他页面显示右下角悬浮额度窗口</span>
         </label>
+        <div className="dq-toggle-hint">当前额度页已展示完整数据，悬浮窗会自动隐藏；切回 Chat 或 Trajectory 后恢复。</div>
         <div className="dq-setting">
           <label className="dq-setting-label" htmlFor="dq-low-balance">余额预警线</label>
           <div className="dq-setting-control">

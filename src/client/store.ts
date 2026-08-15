@@ -42,3 +42,22 @@ export const lowBalanceStore = createStore<number>('alert.lowBalance', isThresho
 
 /** Monthly estimated-cost budget in CNY. 0 leaves budget tracking disabled. */
 export const monthlyBudgetStore = createStore<number>('budget.monthly', isThreshold, 0)
+
+/** Ephemeral presence of the full dashboard. The widget uses it to step out of
+ * the way without changing the user's persisted visibility preference. */
+let quotaViewActive = false
+const quotaViewListeners = new Set<() => void>()
+export const quotaViewActiveStore: Store<boolean> = {
+  get: () => quotaViewActive,
+  set: (value) => {
+    if (value === quotaViewActive) return
+    quotaViewActive = value
+    for (const listener of [...quotaViewListeners]) listener()
+  },
+  subscribe: (fn) => {
+    quotaViewListeners.add(fn)
+    return () => {
+      quotaViewListeners.delete(fn)
+    }
+  },
+}

@@ -10,7 +10,7 @@ import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUs
 import { fmt } from './charts.tsx'
 import type { BalanceData, UsageData } from '../contract.ts'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
-import { lowBalanceStore, widgetVisibleStore } from './store.ts'
+import { lowBalanceStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
 
 const MARGIN = 16
 
@@ -134,6 +134,8 @@ function cornerPos(corner: Corner, node: HTMLElement | null, bounds: Bounds): { 
 export function QuotaWidget(): ReactElement | null {
   const [visible, setVisible] = useState(widgetVisibleStore.get())
   useEffect(() => widgetVisibleStore.subscribe(() => setVisible(widgetVisibleStore.get())), [])
+  const [quotaViewActive, setQuotaViewActive] = useState(quotaViewActiveStore.get())
+  useEffect(() => quotaViewActiveStore.subscribe(() => setQuotaViewActive(quotaViewActiveStore.get())), [])
   const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
   useEffect(() => lowBalanceStore.subscribe(() => setLowBalance(lowBalanceStore.get())), [])
 
@@ -195,7 +197,7 @@ export function QuotaWidget(): ReactElement | null {
    * so repeated triggers cost one rect read and no re-render.
    */
   useLayoutEffect(() => {
-    if (!visible) return
+    if (!visible || quotaViewActive) return
     const node = rootRef.current
     if (node === null) return
     const place = (): void => {
@@ -219,7 +221,7 @@ export function QuotaWidget(): ReactElement | null {
       window.removeEventListener('resize', place)
       clearInterval(poll)
     }
-  }, [visible, corner, collapsed])
+  }, [visible, quotaViewActive, corner, collapsed])
 
   const snapToNearest = (session: DragSession): void => {
     const node = rootRef.current
@@ -375,7 +377,11 @@ export function QuotaWidget(): ReactElement | null {
     : undefined
 
   return (
-    <div className={`dsh-quota-root${dragging ? ' dsh-quota-dragging' : ''}`} style={style}>
+    <div
+      className={`dsh-quota-root${dragging ? ' dsh-quota-dragging' : ''}${quotaViewActive ? ' dsh-quota-root--dashboard' : ''}`}
+      style={style}
+      aria-hidden={quotaViewActive}
+    >
       <div
         ref={rootRef}
         className="dsh-quota-card"
