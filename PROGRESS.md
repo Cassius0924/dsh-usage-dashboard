@@ -3,7 +3,7 @@
 ## 当前阶段
 
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
-Judge 评分：交互 9.6 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览层级已收轻，下一轮继续检查键盘与触屏体验。
+Judge 评分：交互 9.7 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览层级与余额明细可达性已完成打磨。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -84,6 +84,17 @@ Judge 评分：交互 9.6 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 29）`fix(dashboard)`: 余额构成支持键盘与触屏。
+  - Review / Critique：P1 `.dq-remaining` 是不可聚焦的 `div`，充值 / 赠送明细只靠 `:hover` 出现，键盘用户无法进入；
+    P1 触屏没有稳定 hover，明细会不可用或一闪即逝；P2 视觉上没有明确的可展开反馈，辅助技术也无法识别 disclosure 语义。
+    功能扫描继续遵循 UI / 交互优先，不扩张复杂业务功能。
+  - Act：换成原生 `details / summary`，保留桌面 hover 快速预览，同时支持点击、触摸、Enter / Space 持久展开；
+    为触发值增加点状下划线、2px `:focus-visible` 焦点环和中英文操作提示。
+  - Verify：37/37 单测、build、typecheck 全过；Playwright 真实 Tab 2 步聚焦余额，焦点环为 `2px solid`，
+    Enter 与 Space 可展开 / 收起，鼠标点击也可展开，英文明细为 `Topped up 43.52 / Granted 0.00`；中英文、620px、
+    缓存失败与悬浮窗回归全过，除故意注入的 1 条 HTTP 500 外 console error 0、pageerror 0。
+    截图：`/tmp/dsh-i18n-audit/balance-breakdown-keyboard.png`。
 
 - （轮次 28）`style(dashboard)`: 消耗概览信息层级扁平化。
   - Review / Critique：P2 外层卡片内再放三张浅底圆角小卡，形成重复容器并与主卡抢层级；P2 今日 / 本月 / 累计

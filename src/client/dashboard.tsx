@@ -975,13 +975,13 @@ export function BalanceDashboard(): ReactElement {
           <div className="dq-balance-grid">
             <div className="dq-stat">
               <div className="dq-stat-label">{t('balance.remaining')}</div>
-              <div className="dq-stat-value dq-remaining">
-                <span>{fmt(primary.total)} {primary.currency}</span>
+              <details className="dq-stat-value dq-remaining">
+                <summary title={t('balance.breakdownTitle')}>{fmt(primary.total)} {primary.currency}</summary>
                 <div className="dq-remaining-breakdown">
                   <span>{t('balance.toppedUp', { amount: fmt(primary.toppedUp) })}</span>
                   <span className="dq-remaining-granted">{t('balance.granted', { amount: fmt(primary.granted) })}</span>
                 </div>
-              </div>
+              </details>
             </div>
             <div className="dq-stat">
               <div className="dq-stat-label">{t('balance.runway')}</div>
