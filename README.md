@@ -9,6 +9,7 @@
 ![dsh-usage-dashboard](docs/hero.png)
 
 装上之后 GUI 里多两样东西：右下角一个可拖动的**悬浮额度窗**，顶部栏多一个**「额度」tab**。
+界面支持中文与 English，直接跟随 DSH 全局的「Settings → Language」设置；切换无需刷新，选择由 DSH 持久化。
 
 ---
 
@@ -176,6 +177,8 @@ src/
     ├── widget.tsx  # 悬浮额度窗
     ├── dashboard.tsx # 「额度」tab
     ├── charts.tsx  # 柱状图 / 热力图 / tooltip
+    ├── locales.ts  # 中英文完整词典
+    ├── i18n.tsx    # DSH locale 桥接与翻译上下文
     ├── styles.ts   # 全部样式
     ├── api.ts      # fetch + 客户端缓存
     ├── cache.ts    # TTL 缓存（含 localStorage 持久化）

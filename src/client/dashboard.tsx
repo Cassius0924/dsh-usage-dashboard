@@ -12,6 +12,7 @@ import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
+import { fallbackT, localizeApiError, useI18n, type Translate } from './i18n.tsx'
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
 import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
@@ -53,14 +54,15 @@ function UsageSkeleton(): ReactElement {
 
 /** Percentage chip comparing a window against the one before it. */
 function Delta(props: { current: number; previous: number; label: string }): ReactElement | null {
+  const { t } = useI18n()
   const { current, previous, label } = props
   if (previous <= 0) {
     if (current <= 0) return null
-    return <span className="dq-delta dq-delta--new" title={`${label}没有用量，无从对比`}>无对比</span>
+    return <span className="dq-delta dq-delta--new" title={t('delta.noBaselineTitle', { label })}>{t('delta.noBaseline')}</span>
   }
   const percent = Math.round(((current - previous) / previous) * 100)
   const title = `${label} ¥${fmt(previous)}`
-  if (percent === 0) return <span className="dq-delta dq-delta--flat" title={title}>持平</span>
+  if (percent === 0) return <span className="dq-delta dq-delta--flat" title={title}>{t('delta.flat')}</span>
   const up = percent > 0
   return (
     <span className={`dq-delta ${up ? 'dq-delta--up' : 'dq-delta--down'}`} title={title}>
@@ -76,6 +78,7 @@ function Period(props: {
   previous?: PeriodUsage
   compare?: string
 }): ReactElement {
+  const { t, locale } = useI18n()
   const { period, previous, compare } = props
   return (
     <div className="dq-period">
@@ -86,18 +89,22 @@ function Period(props: {
         )}
       </div>
       <div className="dq-period-cost">¥ {fmt(period.cost)}</div>
-      <div className="dq-period-sub">{fmtCompact(period.total)} tokens · {fmtInt(period.calls)} 次调用</div>
+      <div className="dq-period-sub">{t('period.volume', {
+        tokens: fmtCompact(period.total, locale),
+        calls: t('common.calls', { count: fmtInt(period.calls) }),
+      })}</div>
     </div>
   )
 }
 
 /** Monthly guardrail, kept inside the overview rather than adding another card. */
 function BudgetMeter(props: { spent: number; budget: number; onConfigure: () => void }): ReactElement {
+  const { t } = useI18n()
   if (props.budget <= 0) {
     return (
       <div className="dq-budget dq-budget--unset">
-        <span>还没设置月度预算，无法提前判断是否会超支。</span>
-        <button type="button" className="dq-budget-action" onClick={props.onConfigure}>设置预算</button>
+        <span>{t('budget.unset')}</span>
+        <button type="button" className="dq-budget-action" onClick={props.onConfigure}>{t('budget.configure')}</button>
       </div>
     )
   }
@@ -106,30 +113,32 @@ function BudgetMeter(props: { spent: number; budget: number; onConfigure: () => 
   const usedPercent = snapshot.ratio * 100
   const barPercent = Math.min(100, usedPercent)
   const forecastText = snapshot.status === 'over'
-    ? `已超预算 ¥${fmt(Math.abs(snapshot.remaining))}`
+    ? t('budget.over', { amount: fmt(Math.abs(snapshot.remaining)) })
     : snapshot.forecastOver > 0
-      ? `照当前速度，预计超出 ¥${fmt(snapshot.forecastOver)}`
-      : `照当前速度，预计月底 ¥${fmt(snapshot.forecast)}`
+      ? t('budget.forecastOver', { amount: fmt(snapshot.forecastOver) })
+      : t('budget.forecast', { amount: fmt(snapshot.forecast) })
 
   return (
     <div className={`dq-budget dq-budget--${snapshot.status}`}>
       <div className="dq-budget-head">
-        <span className="dq-budget-title">本月预算</span>
+        <span className="dq-budget-title">{t('budget.title')}</span>
         <span className="dq-budget-amount">¥ {fmt(snapshot.spent)} / ¥ {fmt(snapshot.budget)}</span>
       </div>
       <div
         className="dq-budget-track"
         role="progressbar"
-        aria-label="本月预算使用进度"
+        aria-label={t('budget.progressLabel')}
         aria-valuemin={0}
         aria-valuemax={snapshot.budget}
         aria-valuenow={Math.min(snapshot.spent, snapshot.budget)}
-        aria-valuetext={`已使用 ${usedPercent.toFixed(1)}%，${forecastText}`}
+        aria-valuetext={t('budget.used', { percent: usedPercent.toFixed(1), forecast: forecastText })}
       >
         <div className="dq-budget-fill" style={{ transform: `scaleX(${barPercent / 100})` }} />
       </div>
       <div className="dq-budget-meta">
-        <span>{snapshot.remaining >= 0 ? `剩余 ¥${fmt(snapshot.remaining)}` : `超出 ¥${fmt(Math.abs(snapshot.remaining))}`}</span>
+        <span>{snapshot.remaining >= 0
+          ? t('budget.remaining', { amount: fmt(snapshot.remaining) })
+          : t('budget.exceeded', { amount: fmt(Math.abs(snapshot.remaining)) })}</span>
         <span>{forecastText}</span>
       </div>
     </div>
@@ -141,15 +150,16 @@ const rate = (value: number): string => `¥${value.toLocaleString(undefined, { m
 /** Auditable breakdown of the rates the cost estimate was computed with —
  *  a `<details>` so it is keyboard-reachable without any extra state. */
 function PricingNote(props: { pricing: PricingInfo }): ReactElement {
+  const { t } = useI18n()
   const { pricing } = props
   const split = pricing.splitActive
   return (
     <details className="dq-pricing">
       <summary className="dq-pricing-summary">
-        计价说明
+        {t('pricing.title')}
         {split && (
           <span className={`dq-pricing-now${pricing.inPeakNow ? ' dq-pricing-now--peak' : ''}`}>
-            当前 {pricing.inPeakNow ? '高峰时段' : '闲时'}
+            {pricing.inPeakNow ? t('pricing.currentPeak') : t('pricing.currentOffPeak')}
           </span>
         )}
       </summary>
@@ -157,11 +167,11 @@ function PricingNote(props: { pricing: PricingInfo }): ReactElement {
         <table className="dq-pricing-table">
           <thead>
             <tr>
-              <th>模型</th>
-              <th>{split ? '时段' : '单价'}</th>
-              <th>输入·缓存命中</th>
-              <th>输入·未命中</th>
-              <th>输出</th>
+              <th>{t('pricing.model')}</th>
+              <th>{split ? t('pricing.period') : t('pricing.unitPrice')}</th>
+              <th>{t('pricing.inputCacheHit')}</th>
+              <th>{t('pricing.inputCacheMiss')}</th>
+              <th>{t('pricing.output')}</th>
             </tr>
           </thead>
           <tbody>
@@ -169,14 +179,14 @@ function PricingNote(props: { pricing: PricingInfo }): ReactElement {
               <Fragment key={tier.model}>
                 <tr>
                   <td rowSpan={tier.offPeak !== null ? 2 : 1}>{tier.model}</td>
-                  <td>{split ? '高峰' : '固定'}</td>
+                  <td>{split ? t('pricing.peak') : t('pricing.fixed')}</td>
                   <td>{rate(tier.peak.cacheHit)}</td>
                   <td>{rate(tier.peak.input)}</td>
                   <td>{rate(tier.peak.output)}</td>
                 </tr>
                 {tier.offPeak !== null && (
                   <tr>
-                    <td>闲时</td>
+                    <td>{t('pricing.offPeak')}</td>
                     <td>{rate(tier.offPeak.cacheHit)}</td>
                     <td>{rate(tier.offPeak.input)}</td>
                     <td>{rate(tier.offPeak.output)}</td>
@@ -187,60 +197,51 @@ function PricingNote(props: { pricing: PricingInfo }): ReactElement {
           </tbody>
         </table>
         <p className="dq-pricing-foot">
-          单位：{pricing.currency} / 百万 tokens。
+          {t('pricing.unit', { currency: pricing.currency })}
           {split
-            ? `高峰时段为北京时间 ${pricing.peakWindows.join('、')}，其余为闲时（价格减半）；${pricing.switchDate} 之前的用量仍按旧价估算。`
-            : `${pricing.switchDate} 00:00 起改为峰谷定价（高峰 ${pricing.peakWindows.join('、')}，闲时价格减半），届时本页会按每条记录的时间自动分段计价。`}
-          未知模型按 deepseek-v4-pro 计价。
+            ? t('pricing.splitNote', { windows: pricing.peakWindows.join(t('common.listSeparator')), date: pricing.switchDate })
+            : t('pricing.switchNote', { windows: pricing.peakWindows.join(t('common.listSeparator')), date: pricing.switchDate })}
+          {t('pricing.unknown')}
         </p>
       </div>
     </details>
   )
 }
 
-const coverageTime = new Intl.DateTimeFormat('zh-CN', {
-  timeZone: 'Asia/Shanghai',
-  year: 'numeric',
-  month: 'numeric',
-  day: 'numeric',
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-})
-
 /** Make a locally-computed bill honest about which logs it could inspect. */
 function CoverageDiagnostics(props: { coverage: UsageCoverage }): ReactElement {
+  const { t, locale } = useI18n()
   const { coverage } = props
   const hasGaps = coverage.failedSessions > 0
     || coverage.skippedRecords > 0
     || coverage.scannedSessions < coverage.listedSessions
+  const coverageTime = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  })
   const range = coverage.earliestAt === null || coverage.latestAt === null
-    ? '暂无有效用量时间'
+    ? t('coverage.noRange')
     : `${coverageTime.format(coverage.earliestAt)} – ${coverageTime.format(coverage.latestAt)}`
 
   return (
     <details className={`dq-coverage${hasGaps ? ' dq-coverage--warn' : ''}`}>
       <summary className="dq-coverage-summary">
-        <span className="dq-coverage-title">统计范围</span>
-        <span className="dq-coverage-status">{hasGaps ? '存在缺口' : '本机读取完整'}</span>
-        <span className="dq-coverage-brief">
-          扫描 {fmtInt(coverage.scannedSessions)} / {fmtInt(coverage.listedSessions)} 个会话 · {fmtInt(coverage.usageRecords)} 条用量记录
-        </span>
+        <span className="dq-coverage-title">{t('coverage.title')}</span>
+        <span className="dq-coverage-status">{hasGaps ? t('coverage.gaps') : t('coverage.complete')}</span>
+        <span className="dq-coverage-brief">{t('coverage.brief', {
+          scanned: fmtInt(coverage.scannedSessions), listed: fmtInt(coverage.listedSessions), records: fmtInt(coverage.usageRecords),
+        })}</span>
       </summary>
       <div className="dq-coverage-body">
         <dl className="dq-coverage-metrics">
-          <div><dt>成功扫描</dt><dd>{fmtInt(coverage.scannedSessions)} 个会话</dd></div>
-          <div><dt>读取失败</dt><dd>{fmtInt(coverage.failedSessions)} 个会话</dd></div>
-          <div><dt>跳过记录</dt><dd>{fmtInt(coverage.skippedRecords)} 条</dd></div>
+          <div><dt>{t('coverage.scanned')}</dt><dd>{t('common.sessions', { count: fmtInt(coverage.scannedSessions) })}</dd></div>
+          <div><dt>{t('coverage.failed')}</dt><dd>{t('common.sessions', { count: fmtInt(coverage.failedSessions) })}</dd></div>
+          <div><dt>{t('coverage.skipped')}</dt><dd>{t('common.records', { count: fmtInt(coverage.skippedRecords) })}</dd></div>
         </dl>
-        <p className="dq-coverage-range">记录时间：{range}</p>
-        <p className="dq-coverage-note">
-          这里只统计当前设备上的 DSH 会话日志，不包含其他设备、DeepSeek 平台直接调用或已删除的本地日志。
-        </p>
+        <p className="dq-coverage-range">{t('coverage.time', { range })}</p>
+        <p className="dq-coverage-note">{t('coverage.scope')}</p>
         {hasGaps && (
-          <p className="dq-coverage-warning">
-            本次回放有日志无法读取或用量记录格式异常，页面汇总可能低于实际消耗；可刷新重试，并以 DeepSeek 官方平台账单为准。
-          </p>
+          <p className="dq-coverage-warning">{t('coverage.warning')}</p>
         )}
       </div>
     </details>
@@ -264,6 +265,7 @@ function Link(props: { href: string; children: ReactNode }): ReactElement {
 
 /** Download menu kept compact in the usage card header. */
 function ExportMenu(props: { usage: UsageData }): ReactElement {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const [done, setDone] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -325,21 +327,21 @@ function ExportMenu(props: { usage: UsageData }): ReactElement {
         className={`dq-export-btn${done ? ' dq-export-btn--done' : ''}`}
         aria-haspopup="true"
         aria-expanded={open}
-        title="导出全部本机 DSH 会话日志数据（不受统计周期影响）"
+        title={t('export.title')}
         onClick={() => setOpen(value => !value)}
       >
-        {done ? '已导出' : '导出'}
+        {done ? t('export.done') : t('export.action')}
       </button>
       {open && (
-        <div ref={menuRef} className="dq-export-menu" aria-label="选择导出格式">
+        <div ref={menuRef} className="dq-export-menu" aria-label={t('export.menuLabel')}>
           <button type="button" onClick={exportDaily}>
-            <span>逐天 CSV</span><small>{props.usage.daily.length} 行</small>
+            <span>{t('export.dailyCsv')}</span><small>{t('common.rows', { count: props.usage.daily.length })}</small>
           </button>
           <button type="button" onClick={exportModels}>
-            <span>逐模型 CSV</span><small>{props.usage.models.length} 行</small>
+            <span>{t('export.modelCsv')}</span><small>{t('common.rows', { count: props.usage.models.length })}</small>
           </button>
           <button type="button" onClick={exportJson}>
-            <span>完整 JSON</span><small>含图表与排行</small>
+            <span>{t('export.fullJson')}</span><small>{t('export.jsonHint')}</small>
           </button>
         </div>
       )}
@@ -349,7 +351,7 @@ function ExportMenu(props: { usage: UsageData }): ReactElement {
 
 export const modelKeyOf = (m: ModelUsage): string => (m.provider !== '' ? `${m.provider}/${m.model}` : m.model)
 
-export const modelNameOf = (m: ModelUsage): string => (m.model !== '' ? m.model : '未知模型')
+export const modelNameOf = (m: ModelUsage, t: Translate = fallbackT): string => (m.model !== '' ? m.model : t('common.unknownModel'))
 
 /**
  * What prefix caching is doing for the bill. Cache-hit tokens are priced at a
@@ -357,9 +359,10 @@ export const modelNameOf = (m: ModelUsage): string => (m.model !== '' ? m.model 
  * single biggest lever on cost — and it was invisible before.
  */
 function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
+  const { t, locale } = useI18n()
   const { totals } = props
   const prompt = totals.input + totals.cache
-  if (prompt === 0) return <div className="dq-empty">还没有 prompt token 可统计缓存命中。</div>
+  if (prompt === 0) return <div className="dq-empty">{t('cache.empty')}</div>
   const rate = totals.cache / prompt
   const wouldHaveCost = totals.cost + totals.cacheSavings
   const low = rate < 0.6
@@ -367,31 +370,31 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
     <div className="dq-cache">
       <div className="dq-cache-figures">
         <div className="dq-stat">
-          <div className="dq-stat-label">缓存命中率</div>
+          <div className="dq-stat-label">{t('cache.rate')}</div>
           <div className={`dq-stat-value${low ? ' dq-stat-value--warn' : ' dq-stat-value--ok'}`}>
             {(rate * 100).toFixed(1)}%
           </div>
         </div>
         <div className="dq-stat">
-          <div className="dq-stat-label">已节省费用（估算）</div>
+          <div className="dq-stat-label">{t('cache.saved')}</div>
           <div className="dq-stat-value">¥ {fmt(totals.cacheSavings)}</div>
         </div>
         <div className="dq-stat">
-          <div className="dq-stat-label">若全部未命中</div>
+          <div className="dq-stat-label">{t('cache.allMiss')}</div>
           <div className="dq-stat-value dq-muted-value">¥ {fmt(wouldHaveCost)}</div>
         </div>
       </div>
-      <div className="dq-cache-track" role="img" aria-label={`缓存命中 ${(rate * 100).toFixed(1)}%，未命中 ${((1 - rate) * 100).toFixed(1)}%`}>
+      <div className="dq-cache-track" role="img" aria-label={t('cache.aria', { hit: (rate * 100).toFixed(1), miss: ((1 - rate) * 100).toFixed(1) })}>
         <div className="dq-cache-fill" style={{ width: `${rate * 100}%` }} />
       </div>
       <div className="dq-cache-legend">
-        <span><span className="dq-legend-swatch dq-legend-swatch--hit" />缓存命中 {fmtCompact(totals.cache)}</span>
-        <span><span className="dq-legend-swatch dq-legend-swatch--miss" />未命中 {fmtCompact(totals.input)}（按未命中价计费）</span>
+        <span><span className="dq-legend-swatch dq-legend-swatch--hit" />{t('cache.hitLegend', { tokens: fmtCompact(totals.cache, locale) })}</span>
+        <span><span className="dq-legend-swatch dq-legend-swatch--miss" />{t('cache.missLegend', { tokens: fmtCompact(totals.input, locale) })}</span>
       </div>
       <p className="dq-cache-foot">
         {low
-          ? '命中率偏低：频繁改动 system prompt / 工具定义会让前缀缓存失效，把稳定内容放在对话最前面能提高命中率。'
-          : '前缀缓存把重复的 prompt 前缀按命中价计费，是这份账单上最大的省钱杠杆。'}
+          ? t('cache.lowHint')
+          : t('cache.goodHint')}
       </p>
     </div>
   )
@@ -403,9 +406,10 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
  * after it, "what would shifting work off-peak save me".
  */
 function PeakCard(props: { split: PeakSplit; pricing: PricingInfo; currentCost: number }): ReactElement {
+  const { t, locale } = useI18n()
   const { split, pricing, currentCost } = props
   const total = split.peak.total + split.offPeak.total
-  if (total === 0) return <div className="dq-empty">还没有可按时段归类的用量。</div>
+  if (total === 0) return <div className="dq-empty">{t('peak.empty')}</div>
   const peakShare = split.peak.total / total
   const shiftSaving = split.peakEraCost - split.offPeakEraCost
   const increase = split.peakEraCost - currentCost
@@ -415,50 +419,54 @@ function PeakCard(props: { split: PeakSplit; pricing: PricingInfo; currentCost: 
       <div
         className="dq-peak-track"
         role="img"
-        aria-label={`高峰时段 ${(peakShare * 100).toFixed(1)}%，闲时 ${((1 - peakShare) * 100).toFixed(1)}%`}
+        aria-label={t('peak.aria', { peak: (peakShare * 100).toFixed(1), offPeak: ((1 - peakShare) * 100).toFixed(1) })}
       >
         <div className="dq-peak-fill" style={{ width: `${peakShare * 100}%` }} />
       </div>
       <div className="dq-peak-legend">
-        <span><span className="dq-legend-swatch dq-legend-swatch--peak" />高峰 {(peakShare * 100).toFixed(1)}% · {fmtCompact(split.peak.total)} tokens · {fmtInt(split.peak.calls)} 次</span>
-        <span><span className="dq-legend-swatch dq-legend-swatch--offpeak" />闲时 {((1 - peakShare) * 100).toFixed(1)}% · {fmtCompact(split.offPeak.total)} tokens · {fmtInt(split.offPeak.calls)} 次</span>
+        <span><span className="dq-legend-swatch dq-legend-swatch--peak" />{t('peak.peakLegend', {
+          share: (peakShare * 100).toFixed(1), tokens: fmtCompact(split.peak.total, locale), calls: t('common.callsShort', { count: fmtInt(split.peak.calls) }),
+        })}</span>
+        <span><span className="dq-legend-swatch dq-legend-swatch--offpeak" />{t('peak.offPeakLegend', {
+          share: ((1 - peakShare) * 100).toFixed(1), tokens: fmtCompact(split.offPeak.total, locale), calls: t('common.callsShort', { count: fmtInt(split.offPeak.calls) }),
+        })}</span>
       </div>
       <div className="dq-peak-figures">
         {!pricing.splitActive && (
           <div className="dq-stat">
-            <div className="dq-stat-label">同样用量在新价下</div>
+            <div className="dq-stat-label">{t('peak.newPrice')}</div>
             <div className="dq-stat-value">
               ¥ {fmt(split.peakEraCost)}
-              <span className="dq-peak-delta">较现价 +{increasePercent.toFixed(0)}%</span>
+              <span className="dq-peak-delta">{t('peak.increase', { percent: increasePercent.toFixed(0) })}</span>
             </div>
           </div>
         )}
         <div className="dq-stat">
-          <div className="dq-stat-label">若高峰用量都挪到闲时</div>
+          <div className="dq-stat-label">{t('peak.shift')}</div>
           <div className="dq-stat-value">
             ¥ {fmt(split.offPeakEraCost)}
-            <span className="dq-peak-delta dq-peak-delta--save">可省 ¥{fmt(shiftSaving)}</span>
+            <span className="dq-peak-delta dq-peak-delta--save">{t('peak.saving', { amount: fmt(shiftSaving) })}</span>
           </div>
         </div>
       </div>
       <p className="dq-peak-foot">
-        高峰时段为北京时间 {pricing.peakWindows.join('、')}，闲时价格减半。
+        {t('peak.schedule', { windows: pricing.peakWindows.join(t('common.listSeparator')) })}
         {pricing.splitActive
-          ? '把批量、可延后的任务放到闲时跑，同样的 token 只要一半的钱。'
-          : `新价 ${pricing.switchDate} 00:00 生效；上面两个数字是按你已有的全部用量重算的。`}
+          ? t('peak.activeHint')
+          : t('peak.futureHint', { date: pricing.switchDate })}
       </p>
     </div>
   )
 }
 
 /** Coarse "how long ago", enough to tell a live session from last week's. */
-function agoText(ms: number): string {
+function agoText(ms: number, t: Translate): string {
   const minutes = Math.floor((Date.now() - ms) / 60_000)
-  if (minutes < 1) return '刚刚'
-  if (minutes < 60) return `${minutes} 分钟前`
+  if (minutes < 1) return t('common.justNow')
+  if (minutes < 60) return t('common.minutesAgo', { count: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours} 小时前`
-  return `${Math.floor(hours / 24)} 天前`
+  if (hours < 24) return t('common.hoursAgo', { count: hours })
+  return t('common.daysAgo', { count: Math.floor(hours / 24) })
 }
 
 /**
@@ -467,8 +475,9 @@ function agoText(ms: number): string {
  * a single expensive session is a prompt or a loop worth looking at.
  */
 function SessionRanking(props: { sessions: SessionCost[]; count: number; totalCost: number }): ReactElement {
+  const { t, locale } = useI18n()
   const { sessions, count, totalCost } = props
-  if (sessions.length === 0) return <div className="dq-empty">还没有产生费用的会话。</div>
+  if (sessions.length === 0) return <div className="dq-empty">{t('sessions.empty')}</div>
   const top = sessions[0].cost
   return (
     <>
@@ -476,21 +485,25 @@ function SessionRanking(props: { sessions: SessionCost[]; count: number; totalCo
         {sessions.map(s => (
           <li key={s.id} className="dq-session">
             <div className="dq-session-head">
-              <span className="dq-session-title" title={`${s.title}\n${s.id}`}>{s.title}</span>
+              <span className="dq-session-title" title={`${s.title}\n${s.id}`}>{s.title || t('sessions.fallbackTitle', { id: s.id })}</span>
               <span className="dq-session-cost">¥ {fmt(s.cost)}</span>
             </div>
             <div className="dq-session-track">
               <div className="dq-session-fill" style={{ width: `${Math.max((s.cost / (top || 1)) * 100, 1.5)}%` }} />
             </div>
             <div className="dq-session-sub">
-              {fmtCompact(s.total)} tokens · {fmtInt(s.calls)} 次调用 · {agoText(s.lastActive)}
-              {totalCost > 0 && <> · 占 {((s.cost / totalCost) * 100).toFixed(1)}%</>}
+              {t('sessions.detail', {
+                tokens: fmtCompact(s.total, locale),
+                calls: t('common.calls', { count: fmtInt(s.calls) }),
+                ago: agoText(s.lastActive, t),
+              })}
+              {totalCost > 0 && <> · {t('sessions.share', { percent: ((s.cost / totalCost) * 100).toFixed(1) })}</>}
             </div>
           </li>
         ))}
       </ol>
       {count > sessions.length && (
-        <p className="dq-session-foot">共 {fmtInt(count)} 个会话有用量，上面是最贵的 {sessions.length} 个。</p>
+        <p className="dq-session-foot">{t('sessions.more', { count: fmtInt(count), shown: sessions.length })}</p>
       )}
     </>
   )
@@ -502,8 +515,9 @@ function ModelRanking(props: {
   totalCost: number
   colorOf: (key: string) => string
 }): ReactElement {
+  const { t, locale } = useI18n()
   const { models, totalCost } = props
-  if (models.length === 0) return <div className="dq-empty">还没有可归类的模型用量。</div>
+  if (models.length === 0) return <div className="dq-empty">{t('models.empty')}</div>
   return (
     <div className="dq-rank">
       {models.map(m => {
@@ -514,7 +528,7 @@ function ModelRanking(props: {
             <div className="dq-rank-head">
               <span className="dq-rank-name" title={key}>
                 <span className="dq-legend-swatch" style={{ background: props.colorOf(key) }} />
-                {modelNameOf(m)}
+                {modelNameOf(m, t)}
               </span>
               <span className="dq-rank-cost">
                 ¥ {fmt(m.cost)}
@@ -524,12 +538,16 @@ function ModelRanking(props: {
             <div
               className="dq-rank-track"
               role="img"
-              aria-label={`${modelNameOf(m)} 占总费用 ${(share * 100).toFixed(1)}%`}
+              aria-label={t('models.shareAria', { name: modelNameOf(m, t), percent: (share * 100).toFixed(1) })}
             >
               <div className="dq-rank-fill" style={{ width: `${Math.max(share * 100, 1.5)}%`, background: props.colorOf(key) }} />
             </div>
             <div className="dq-rank-sub">
-              {fmtCompact(m.total)} tokens · {fmtInt(m.calls)} 次调用 · 输入 {fmtCompact(m.input)} / 输出 {fmtCompact(m.output)} / 缓存 {fmtCompact(m.cache)}
+              {t('models.detail', {
+                tokens: fmtCompact(m.total, locale),
+                calls: t('common.calls', { count: fmtInt(m.calls) }),
+                input: fmtCompact(m.input, locale), output: fmtCompact(m.output, locale), cache: fmtCompact(m.cache, locale),
+              })}
             </div>
           </div>
         )
@@ -545,6 +563,7 @@ function ModelPicker(props: {
   colorOf: (key: string) => string
   onChange: (keys: string[]) => void
 }): ReactElement | null {
+  const { t, locale } = useI18n()
   const { models } = props
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -581,7 +600,7 @@ function ModelPicker(props: {
     )
   }
 
-  const label = props.selected.length === 0 ? '全部模型' : `模型 ×${props.selected.length}`
+  const label = props.selected.length === 0 ? t('models.all') : t('models.selected', { count: props.selected.length })
 
   return (
     <div className="dq-model-picker" ref={rootRef}>
@@ -592,20 +611,20 @@ function ModelPicker(props: {
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls="dq-model-menu"
-        title="筛选图表中显示的模型"
+        title={t('models.filterTitle')}
         onClick={() => setOpen(value => !value)}
       >
         {label}
       </button>
       {open && (
-        <div id="dq-model-menu" ref={menuRef} className="dq-model-menu" role="group" aria-label="筛选图表模型">
+        <div id="dq-model-menu" ref={menuRef} className="dq-model-menu" role="group" aria-label={t('models.filterLabel')}>
           <label className="dq-model-item dq-model-item--all">
             <input
               type="checkbox"
               checked={props.selected.length === 0}
               onChange={() => props.onChange([])}
             />
-            <span>全部模型</span>
+            <span>{t('models.all')}</span>
           </label>
           {models.map(m => {
             const key = modelKeyOf(m)
@@ -613,8 +632,8 @@ function ModelPicker(props: {
               <label key={key} className="dq-model-item">
                 <input type="checkbox" checked={props.selected.includes(key)} onChange={() => toggle(key)} />
                 <span className="dq-legend-swatch" style={{ background: props.colorOf(key) }} />
-                <span>{modelNameOf(m)}</span>
-                <span className="dq-model-tag">{fmtCompact(m.total)}</span>
+                <span>{modelNameOf(m, t)}</span>
+                <span className="dq-model-tag">{fmtCompact(m.total, locale)}</span>
               </label>
             )
           })}
@@ -624,43 +643,49 @@ function ModelPicker(props: {
   )
 }
 
-const windowName = (days: UsageWindowDays): string => days === 365 ? '近 1 年' : `近 ${days} 天`
+const windowName = (days: UsageWindowDays, t: Translate = fallbackT): string => days === 365
+  ? t('window.year')
+  : t('window.days', { days })
 
 /** One range choice controls every metric whose title carries that range. */
 function UsageWindowPicker(props: { value: UsageWindowDays; onChange: (days: UsageWindowDays) => void }): ReactElement {
+  const { t } = useI18n()
   return (
-    <div className="dq-window-switch" role="group" aria-label="统计周期">
+    <div className="dq-window-switch" role="group" aria-label={t('window.groupLabel')}>
       {USAGE_WINDOW_DAYS.map(days => (
         <button
           key={days}
           type="button"
           className={`dq-window-btn${props.value === days ? ' dq-window-btn--on' : ''}`}
           aria-pressed={props.value === days}
-          title={`查看${windowName(days)}的用量与排行`}
+          title={t('window.viewTitle', { window: windowName(days, t) })}
           onClick={() => props.onChange(days)}
         >
-          {days === 365 ? '1 年' : `${days} 天`}
+          {days === 365 ? t('window.yearButton') : t('window.daysButton', { days })}
         </button>
       ))}
     </div>
   )
 }
 
-const chartMetricLabel = (metric: ChartMetric): string => metric === 'tokens' ? 'tokens' : chartMetricName(metric)
+const chartMetricLabel = (metric: ChartMetric, t: Translate = fallbackT): string => metric === 'tokens'
+  ? t('metric.tokens')
+  : chartMetricName(metric, t)
 
 function ChartMetricPicker(props: { value: ChartMetric; onChange: (metric: ChartMetric) => void }): ReactElement {
+  const { t } = useI18n()
   return (
-    <div className="dq-chart-switch" role="group" aria-label="图表指标">
+    <div className="dq-chart-switch" role="group" aria-label={t('metric.groupLabel')}>
       {CHART_METRICS.map(metric => (
         <button
           key={metric}
           type="button"
           className={`dq-chart-switch-btn${props.value === metric ? ' dq-chart-switch-btn--on' : ''}`}
           aria-pressed={props.value === metric}
-          title={`按${chartMetricLabel(metric)}比较`}
+          title={t('metric.compareTitle', { metric: chartMetricLabel(metric, t) })}
           onClick={() => props.onChange(metric)}
         >
-          {chartMetricLabel(metric)}
+          {chartMetricLabel(metric, t)}
         </button>
       ))}
     </div>
@@ -668,6 +693,7 @@ function ChartMetricPicker(props: { value: ChartMetric; onChange: (metric: Chart
 }
 
 export function BalanceDashboard(): ReactElement {
+  const { t, locale } = useI18n()
   // Seed state from the cache so the tab never waits on the network when
   // data has been fetched before (stale-while-revalidate).
   const cachedBalance = getCachedBalance()
@@ -676,7 +702,7 @@ export function BalanceDashboard(): ReactElement {
   const [balance, setBalance] = useState<BalanceData | null>(cachedBalance?.data ?? null)
   const [usage, setUsage] = useState<UsageData | null>(cachedUsage?.data ?? null)
   const [error, setError] = useState<string | null>(null)
-  const [notice, setNotice] = useState<string | null>(null)
+  const [notice, setNotice] = useState<{ kind: 'all' | 'balance' | 'usage'; error: string } | null>(null)
   // Balance answers in well under a second, usage replays every session log and
   // takes seconds — so they get their own loading flags and paint independently
   // instead of the fast one waiting on the slow one.
@@ -750,12 +776,12 @@ export function BalanceDashboard(): ReactElement {
     }
     if (balanceError !== null && usageError !== null) {
       // Nothing came back at all: an error only when there is nothing to show.
-      if (hadDataRef.current) setNotice(`刷新失败，正在展示缓存数据（${balanceError}）`)
+      if (hadDataRef.current) setNotice({ kind: 'all', error: balanceError })
       else setError(balanceError)
     } else if (balanceError !== null) {
-      setNotice(`余额刷新失败，正在展示缓存余额（${balanceError}）`)
+      setNotice({ kind: 'balance', error: balanceError })
     } else if (usageError !== null) {
-      setNotice(`用量刷新失败，正在展示缓存用量（${usageError}）`)
+      setNotice({ kind: 'usage', error: usageError })
     }
   }
 
@@ -809,23 +835,27 @@ export function BalanceDashboard(): ReactElement {
   const daysLeft = avgDailyCost > 0 && Number.isFinite(balanceValue) ? balanceValue / avgDailyCost : null
   const daysLeftText = daysLeft === null
     ? '—'
-    : daysLeft >= 365 ? '> 365 天' : `${daysLeft < 10 ? daysLeft.toFixed(1) : Math.round(daysLeft)} 天`
+    : daysLeft >= 365 ? t('balance.overYear') : t('balance.days', { count: daysLeft < 10 ? daysLeft.toFixed(1) : Math.round(daysLeft) })
   const runwayTitle = daysLeft === null
-    ? `近 ${recentDays.length || 7} 天没有用量，无法估算`
-    : `按近 ${recentDays.length} 天日均 ¥${fmt(avgDailyCost)} 估算（含无用量的日子；今天尚未过完）`
+    ? t('balance.noRunway', { days: recentDays.length || 7 })
+    : t('balance.runwayTitle', { days: recentDays.length, cost: fmt(avgDailyCost) })
 
   const activeWindow = usage?.windows.find(window => window.days === windowDays) ?? null
-  const activeWindowName = windowName(windowDays)
+  const activeWindowName = windowName(windowDays, t)
 
   const dailyBars = (activeWindow?.daily ?? []).map(d => ({
     label: windowDays === 365 ? d.date.slice(5).replace('-', '/') : d.date.slice(8, 10),
     value: chartMetricValue(chartMetric, d),
-    title: `${d.date} · ${fmtInt(d.total)} tokens · ¥${fmt(d.cost)} · ${d.calls} 次调用`,
+    title: t('chart.tooltip', {
+      head: d.date, tokens: fmtInt(d.total), cost: fmt(d.cost), calls: t('common.calls', { count: d.calls }),
+    }),
   }))
   const hourlyBars = (activeWindow?.hourly ?? []).map(h => ({
     label: String(h.hour),
     value: chartMetricValue(chartMetric, h),
-    title: `${h.hour} 点 · ${fmtInt(h.total)} tokens · ¥${fmt(h.cost)} · ${h.calls} 次调用`,
+    title: t('chart.tooltip', {
+      head: t('chart.hourPoint', { hour: h.hour }), tokens: fmtInt(h.total), cost: fmt(h.cost), calls: t('common.calls', { count: h.calls }),
+    }),
   }))
 
   // One canonical model order — most expensive first — shared by the ranking
@@ -837,7 +867,9 @@ export function BalanceDashboard(): ReactElement {
     .reduce((peak, bar) => (bar.value > peak ? bar.value : peak), 0)
   const chartPeakText = chartMetric === 'cost'
     ? `¥${fmt(chartPeak)}`
-    : chartMetric === 'calls' ? `${fmtInt(chartPeak)} 次` : `${fmtCompact(chartPeak)} tokens`
+    : chartMetric === 'calls'
+      ? t('common.callsShort', { count: fmtInt(chartPeak) })
+      : `${fmtCompact(chartPeak, locale)} tokens`
 
   const modelList = [...(activeWindow?.models ?? [])].sort((a, b) => b.cost - a.cost)
   const canonicalModels = [...(usage?.models ?? [])].sort((a, b) => b.cost - a.cost)
@@ -852,7 +884,7 @@ export function BalanceDashboard(): ReactElement {
   // Per-model series for the grouped bar chart (only when models are selected).
   const grouped = effectiveSelection.map(key => {
     const m = modelList.find(x => modelKeyOf(x) === key)
-    const name = m === undefined ? key : modelNameOf(m)
+    const name = m === undefined ? key : modelNameOf(m, t)
     const color = colorOf(key)
     if (barMode === 'daily') {
       return {
@@ -864,7 +896,10 @@ export function BalanceDashboard(): ReactElement {
             ? ((activeWindow?.daily ?? [])[i]?.date.slice(5).replace('-', '/') ?? '')
             : ((activeWindow?.daily ?? [])[i]?.date.slice(8, 10) ?? ''),
           value: chartMetricValue(chartMetric, p),
-          title: `${name} · ${(activeWindow?.daily ?? [])[i]?.date ?? ''} · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
+          title: t('chart.tooltip', {
+            head: `${name} · ${(activeWindow?.daily ?? [])[i]?.date ?? ''}`,
+            tokens: fmtInt(p.total), cost: fmt(p.cost), calls: t('common.calls', { count: p.calls }),
+          }),
         })),
       }
     }
@@ -875,12 +910,22 @@ export function BalanceDashboard(): ReactElement {
       bars: (m?.hourly ?? []).map((p, i) => ({
         label: String(i),
         value: chartMetricValue(chartMetric, p),
-        title: `${name} · ${i} 点 · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
+        title: t('chart.tooltip', {
+          head: `${name} · ${t('chart.hourPoint', { hour: i })}`,
+          tokens: fmtInt(p.total), cost: fmt(p.cost), calls: t('common.calls', { count: p.calls }),
+        }),
       })),
     }
   })
   const dailyLabelEvery = windowDays === 7 ? 1 : windowDays === 30 ? 5 : windowDays === 90 ? 15 : 30
   const dailyMinWidth = windowDays === 365 ? 1825 : undefined
+  const noticeText = notice === null ? null : t(
+    notice.kind === 'all'
+      ? 'error.refreshCached'
+      : notice.kind === 'balance' ? 'error.balanceRefreshCached' : 'error.usageRefreshCached',
+    { error: localizeApiError(notice.error, t, 'error.query') },
+  )
+  const errorText = error === null ? null : localizeApiError(error, t, 'error.query')
 
   return (
     <div className="dq-balance">
@@ -891,25 +936,25 @@ export function BalanceDashboard(): ReactElement {
             role="status"
             aria-live="polite"
             title={usageUpdatedAt === null
-              ? '还没有成功同步过用量数据'
-              : `用量数据时间：${new Date(usageUpdatedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`}
+              ? t('status.neverSynced')
+              : t('status.usageTime', { time: new Date(usageUpdatedAt).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN', { timeZone: 'Asia/Shanghai' }) })}
           >
             <span className="dq-sync-dot" aria-hidden="true" />
-            {syncStatusText(syncState, usageUpdatedAt, freshnessNow)}
+            {syncStatusText(syncState, usageUpdatedAt, freshnessNow, t)}
           </span>
-          {notice !== null && <span className="dq-warn">{notice}</span>}
-          {error !== null && <span className="dq-error">{error}</span>}
+          {noticeText !== null && <span className="dq-warn">{noticeText}</span>}
+          {errorText !== null && <span className="dq-error">{errorText}</span>}
         </div>
         <button
           type="button"
           className="dq-refresh-btn"
-          title="强制刷新（绕过缓存）"
+          title={t('status.forceRefresh')}
           disabled={refreshing}
           aria-busy={refreshing}
           onClick={() => { void load(true) }}
         >
           <span className={`dq-refresh-icon${refreshing ? ' dq-refresh-icon--spin' : ''}`}>↻</span>
-          {refreshing ? '刷新中' : '刷新'}
+          {refreshing ? t('status.refreshing') : t('status.refresh')}
         </button>
       </div>
 
@@ -917,29 +962,29 @@ export function BalanceDashboard(): ReactElement {
         <div className="dq-alert" role="status">
           <span className="dq-alert-icon" aria-hidden="true">!</span>
           <div>
-            <strong>余额 {fmt(balanceValue)} {primary?.currency} 已低于预警线 {fmt(lowBalance)}</strong>
-            {daysLeft !== null && <>，按近期用量估计还能撑 {daysLeftText}</>}。
-            <a className="dq-alert-link" href="https://platform.deepseek.com/top_up" target="_blank" rel="noreferrer">去充值</a>
+            <strong>{t('alert.lowTitle', { balance: fmt(balanceValue), currency: primary?.currency, threshold: fmt(lowBalance) })}</strong>
+            {daysLeft !== null && t('alert.runway', { days: daysLeftText })}{t('common.period')}
+            <a className="dq-alert-link" href="https://platform.deepseek.com/top_up" target="_blank" rel="noreferrer">{t('alert.topUp')}</a>
           </div>
         </div>
       )}
 
       <div className="dq-card">
-        <div className="dq-card-title">账户余额</div>
+        <div className="dq-card-title">{t('balance.title')}</div>
         {primary !== null ? (
           <div className="dq-balance-grid">
             <div className="dq-stat">
-              <div className="dq-stat-label">剩余余额</div>
+              <div className="dq-stat-label">{t('balance.remaining')}</div>
               <div className="dq-stat-value dq-remaining">
                 <span>{fmt(primary.total)} {primary.currency}</span>
                 <div className="dq-remaining-breakdown">
-                  <span>充值额度 {fmt(primary.toppedUp)}</span>
-                  <span className="dq-remaining-granted">赠送额度 {fmt(primary.granted)}</span>
+                  <span>{t('balance.toppedUp', { amount: fmt(primary.toppedUp) })}</span>
+                  <span className="dq-remaining-granted">{t('balance.granted', { amount: fmt(primary.granted) })}</span>
                 </div>
               </div>
             </div>
             <div className="dq-stat">
-              <div className="dq-stat-label">预计可用</div>
+              <div className="dq-stat-label">{t('balance.runway')}</div>
               <div
                 className={`dq-stat-value dq-runway${daysLeft !== null && daysLeft < 3 ? ' dq-stat-value--bad' : ''}`}
                 title={runwayTitle}
@@ -947,27 +992,27 @@ export function BalanceDashboard(): ReactElement {
                 {daysLeftText}
               </div>
             </div>
-            <Stat label="状态">
+            <Stat label={t('common.status')}>
               <div className={`dq-stat-value${balance?.isAvailable === false ? ' dq-stat-value--bad' : ' dq-stat-value--ok'}`}>
-                {balance?.isAvailable === false ? '不可用' : '可用'}
+                {balance?.isAvailable === false ? t('common.unavailable') : t('common.available')}
               </div>
             </Stat>
           </div>
         ) : loadingBalance ? (
           <BalanceSkeleton />
         ) : (
-          <div className="dq-empty">读不到余额。请确认「设置 → 模型」里已填 DEEPSEEK_API_KEY，然后点右上角刷新。</div>
+          <div className="dq-empty">{t('balance.empty')}</div>
         )}
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">消耗概览（费用为估算）</div>
+        <div className="dq-card-title">{t('overview.title')}</div>
         {usage !== null ? (
           <div className="dq-period-grid">
-            <Period label="今日" period={usage.summary.today} previous={usage.summary.yesterday} compare="较昨日" />
-            <Period label="本月" period={usage.summary.month} previous={usage.summary.lastMonthToDate} compare="较上月同期" />
+            <Period label={t('overview.today')} period={usage.summary.today} previous={usage.summary.yesterday} compare={t('overview.vsYesterday')} />
+            <Period label={t('overview.month')} period={usage.summary.month} previous={usage.summary.lastMonthToDate} compare={t('overview.vsLastMonth')} />
             <Period
-              label="累计"
+              label={t('overview.total')}
               period={{ total: usage.totals.total, cost: usage.totals.cost, calls: usage.totals.calls }}
             />
           </div>
@@ -981,7 +1026,7 @@ export function BalanceDashboard(): ReactElement {
             ))}
           </div>
         ) : (
-          <div className="dq-empty">还没有可统计的消耗。</div>
+          <div className="dq-empty">{t('overview.empty')}</div>
         )}
         {usage !== null && (
           <BudgetMeter
@@ -995,7 +1040,7 @@ export function BalanceDashboard(): ReactElement {
 
       <div className="dq-card">
         <div className="dq-card-head">
-          <div className="dq-card-title">DSH 用量（tokens）</div>
+          <div className="dq-card-title">{t('usage.title')}</div>
           {usage !== null && (
             <div className="dq-card-actions">
               <UsageWindowPicker value={windowDays} onChange={changeWindowDays} />
@@ -1006,22 +1051,22 @@ export function BalanceDashboard(): ReactElement {
         {usage !== null && activeWindow !== null ? (
           <>
             <div className="dq-usage-totals">
-              <Stat label={`${activeWindowName}输入`}><div className="dq-stat-value">{fmtCompact(activeWindow.totals.input)}</div></Stat>
-              <Stat label="输出"><div className="dq-stat-value">{fmtCompact(activeWindow.totals.output)}</div></Stat>
-              <Stat label="缓存命中"><div className="dq-stat-value">{fmtCompact(activeWindow.totals.cache)}</div></Stat>
-              <Stat label="模型调用"><div className="dq-stat-value">{fmtInt(activeWindow.totals.calls)}</div></Stat>
+              <Stat label={t('usage.windowInput', { window: activeWindowName })}><div className="dq-stat-value">{fmtCompact(activeWindow.totals.input, locale)}</div></Stat>
+              <Stat label={t('common.output')}><div className="dq-stat-value">{fmtCompact(activeWindow.totals.output, locale)}</div></Stat>
+              <Stat label={t('common.cacheHit')}><div className="dq-stat-value">{fmtCompact(activeWindow.totals.cache, locale)}</div></Stat>
+              <Stat label={t('usage.modelCalls')}><div className="dq-stat-value">{fmtInt(activeWindow.totals.calls)}</div></Stat>
             </div>
             <div className="dq-chart-block-head">
               <div className="dq-chart-title">
                 {barMode === 'daily'
-                  ? `${activeWindowName} · 逐天${chartMetricName(chartMetric)}`
-                  : `${activeWindowName} · ${chartMetricName(chartMetric)}按小时分布（0–23 点）`}
-                {chartPeak > 0 && <span className="dq-chart-peak">峰值 {chartPeakText}</span>}
+                  ? t('chart.dailyTitle', { window: activeWindowName, metric: chartMetricName(chartMetric, t) })
+                  : t('chart.hourlyTitle', { window: activeWindowName, metric: chartMetricName(chartMetric, t) })}
+                {chartPeak > 0 && <span className="dq-chart-peak">{t('chart.peak', { value: chartPeakText })}</span>}
               </div>
               <div className="dq-chart-controls">
                 <ModelPicker models={modelList} selected={effectiveSelection} colorOf={colorOf} onChange={setSelectedModels} />
                 <ChartMetricPicker value={chartMetric} onChange={changeChartMetric} />
-                <div className="dq-chart-switch" role="tablist" aria-label="切换图表维度">
+                <div className="dq-chart-switch" role="tablist" aria-label={t('chart.dimensionLabel')}>
                   <button
                     type="button"
                     role="tab"
@@ -1029,7 +1074,7 @@ export function BalanceDashboard(): ReactElement {
                     className={`dq-chart-switch-btn${barMode === 'daily' ? ' dq-chart-switch-btn--on' : ''}`}
                     onClick={() => setBarMode('daily')}
                   >
-                    逐天
+                    {t('chart.daily')}
                   </button>
                   <button
                     type="button"
@@ -1038,13 +1083,13 @@ export function BalanceDashboard(): ReactElement {
                     className={`dq-chart-switch-btn${barMode === 'hourly' ? ' dq-chart-switch-btn--on' : ''}`}
                     onClick={() => setBarMode('hourly')}
                   >
-                    逐小时
+                    {t('chart.hourly')}
                   </button>
                 </div>
               </div>
             </div>
             {activeWindow.totals.calls === 0 ? (
-              <div className="dq-empty">{activeWindowName}没有用量记录，换个更长周期看看。</div>
+              <div className="dq-empty">{t('chart.noWindowData', { window: activeWindowName })}</div>
             ) : grouped.length > 0 ? (
               <>
                 <GroupedBars
@@ -1067,19 +1112,19 @@ export function BalanceDashboard(): ReactElement {
             ) : (
               <Bars data={hourlyBars} height={100} labelEvery={3} />
             )}
-            <div className="dq-chart-title">近一年 · 每日用量热力图</div>
+            <div className="dq-chart-title">{t('chart.heatmapTitle')}</div>
             <Heatmap data={usage.heatmap} />
             <CoverageDiagnostics coverage={usage.coverage} />
           </>
         ) : loadingUsage ? (
           <UsageSkeleton />
         ) : (
-          <div className="dq-empty">还没有用量记录。在 DSH 里跑一轮对话，这里会出现逐天 / 逐小时统计与费用估算。</div>
+          <div className="dq-empty">{t('chart.empty')}</div>
         )}
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">高峰 / 闲时分布</div>
+        <div className="dq-card-title">{t('peak.title')}</div>
         {usage !== null ? (
           <PeakCard split={usage.peakSplit} pricing={usage.pricing} currentCost={usage.totals.cost} />
         ) : loadingUsage ? (
@@ -1088,12 +1133,12 @@ export function BalanceDashboard(): ReactElement {
             <div className="dq-peak-figures"><Skel w={120} h={11} /><Skel w={96} h={20} /></div>
           </>
         ) : (
-          <div className="dq-empty">还没有可按时段归类的用量。</div>
+          <div className="dq-empty">{t('peak.empty')}</div>
         )}
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">缓存命中与节省</div>
+        <div className="dq-card-title">{t('cache.title')}</div>
         {usage !== null ? (
           <CacheCard totals={usage.totals} />
         ) : loadingUsage ? (
@@ -1103,12 +1148,12 @@ export function BalanceDashboard(): ReactElement {
             ))}
           </div>
         ) : (
-          <div className="dq-empty">还没有 prompt token 可统计缓存命中。</div>
+          <div className="dq-empty">{t('cache.empty')}</div>
         )}
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">模型成本排行 · {activeWindowName}</div>
+        <div className="dq-card-title">{t('models.title', { window: activeWindowName })}</div>
         {activeWindow !== null ? (
           <ModelRanking models={modelList} totalCost={modelCostTotal} colorOf={colorOf} />
         ) : loadingUsage ? (
@@ -1122,12 +1167,12 @@ export function BalanceDashboard(): ReactElement {
             ))}
           </div>
         ) : (
-          <div className="dq-empty">还没有可归类的模型用量。</div>
+          <div className="dq-empty">{t('models.empty')}</div>
         )}
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">会话成本排行 · {activeWindowName}</div>
+        <div className="dq-card-title">{t('sessions.title', { window: activeWindowName })}</div>
         {activeWindow !== null ? (
           <SessionRanking sessions={activeWindow.sessions} count={activeWindow.sessionCount} totalCost={activeWindow.totals.cost} />
         ) : loadingUsage ? (
@@ -1141,28 +1186,28 @@ export function BalanceDashboard(): ReactElement {
             ))}
           </div>
         ) : (
-          <div className="dq-empty">还没有产生费用的会话。</div>
+          <div className="dq-empty">{t('sessions.empty')}</div>
         )}
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">官方平台</div>
+        <div className="dq-card-title">{t('links.title')}</div>
         <div className="dq-links">
-          <Link href="https://platform.deepseek.com/usage">查看额度 / 用量</Link>
-          <Link href="https://platform.deepseek.com/api_keys">生成 API Key</Link>
-          <Link href="https://status.deepseek.com">服务状态</Link>
+          <Link href="https://platform.deepseek.com/usage">{t('links.usage')}</Link>
+          <Link href="https://platform.deepseek.com/api_keys">{t('links.apiKey')}</Link>
+          <Link href="https://status.deepseek.com">{t('links.status')}</Link>
         </div>
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">设置</div>
+        <div className="dq-card-title">{t('settings.title')}</div>
         <label className="dq-toggle">
           <input type="checkbox" checked={widgetOn} onChange={toggle} />
-          <span>在其他页面显示右下角悬浮额度窗口</span>
+          <span>{t('settings.widget')}</span>
         </label>
-        <div className="dq-toggle-hint">当前额度页已展示完整数据，悬浮窗会自动隐藏；切回 Chat 或 Trajectory 后恢复。</div>
+        <div className="dq-toggle-hint">{t('settings.widgetHint')}</div>
         <div className="dq-setting">
-          <label className="dq-setting-label" htmlFor="dq-low-balance">余额预警线</label>
+          <label className="dq-setting-label" htmlFor="dq-low-balance">{t('settings.lowBalance')}</label>
           <div className="dq-setting-control">
             <input
               id="dq-low-balance"
@@ -1175,13 +1220,13 @@ export function BalanceDashboard(): ReactElement {
             />
             <span className="dq-setting-hint">
               {lowBalance > 0
-                ? `余额低于 ${fmt(lowBalance)} ${primary?.currency ?? 'CNY'} 时，这里和悬浮窗都会转为警示色。填 0 关闭。`
-                : '已关闭余额预警。填一个大于 0 的数开启。'}
+                ? t('settings.lowBalanceOn', { amount: fmt(lowBalance), currency: primary?.currency ?? 'CNY' })
+                : t('settings.lowBalanceOff')}
             </span>
           </div>
         </div>
         <div className="dq-setting">
-          <label className="dq-setting-label" htmlFor="dq-monthly-budget">月度预算</label>
+          <label className="dq-setting-label" htmlFor="dq-monthly-budget">{t('settings.monthlyBudget')}</label>
           <div className="dq-setting-control">
             <input
               ref={budgetInputRef}
@@ -1196,8 +1241,8 @@ export function BalanceDashboard(): ReactElement {
             />
             <span id="dq-monthly-budget-hint" className="dq-setting-hint">
               {monthlyBudget > 0
-                ? `按北京时间自然月跟踪 ${fmt(monthlyBudget)} CNY 预算，并在消耗概览预测月底花费。填 0 关闭。`
-                : '填一个大于 0 的金额，消耗概览会显示进度与月底预测。'}
+                ? t('settings.monthlyBudgetOn', { amount: fmt(monthlyBudget) })
+                : t('settings.monthlyBudgetOff')}
             </span>
           </div>
         </div>

@@ -9,6 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt, subscribeUsage } from './api.ts'
 import { fmt } from './charts.tsx'
 import type { BalanceData, UsageData } from '../contract.ts'
+import { localizeApiError, useI18n } from './i18n.tsx'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
 import { lowBalanceStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
 
@@ -132,6 +133,7 @@ function cornerPos(corner: Corner, node: HTMLElement | null, bounds: Bounds): { 
 }
 
 export function QuotaWidget(): ReactElement | null {
+  const { t } = useI18n()
   const [visible, setVisible] = useState(widgetVisibleStore.get())
   useEffect(() => widgetVisibleStore.subscribe(() => setVisible(widgetVisibleStore.get())), [])
   const [quotaViewActive, setQuotaViewActive] = useState(quotaViewActiveStore.get())
@@ -169,7 +171,7 @@ export function QuotaWidget(): ReactElement | null {
         setError(null)
       } else {
         setData(null)
-        setError(res.error ?? '查询失败')
+        setError(res.error ?? '')
       }
     } catch (err) {
       setData(null)
@@ -337,38 +339,40 @@ export function QuotaWidget(): ReactElement | null {
   // The usage figure can be minutes old (it is only refreshed on demand), so
   // say how old rather than presenting it as live.
   const ageMinutes = usage.at === null ? null : Math.floor((Date.now() - usage.at) / 60_000)
-  const usageAgeText = ageMinutes === null || ageMinutes < 1 ? '刚刚更新' : `${ageMinutes} 分钟前的数据，点 ↻ 更新`
+  const usageAgeText = ageMinutes === null || ageMinutes < 1
+    ? t('widget.updatedNow')
+    : t('widget.stale', { minutes: ageMinutes })
 
   let body: ReactElement | null = null
   if (!collapsed) {
     if (loading && data === null && error === null) {
-      body = <div className="dsh-quota-body">查询中…</div>
+      body = <div className="dsh-quota-body">{t('widget.loading')}</div>
     } else if (error !== null && data === null) {
-      body = <div className="dsh-quota-body dsh-quota-error">{error}</div>
+      body = <div className="dsh-quota-body dsh-quota-error">{localizeApiError(error, t, 'error.query')}</div>
     } else if (primary !== null) {
       body = (
         <div className="dsh-quota-body">
-          <div className="dsh-quota-remaining-label">剩余余额</div>
-          <div title={low ? `余额低于预警线 ${fmt(lowBalance)}` : undefined}>
+          <div className="dsh-quota-remaining-label">{t('balance.remaining')}</div>
+          <div title={low ? t('widget.lowTitle', { amount: fmt(lowBalance) }) : undefined}>
             <span className={`dsh-quota-total${low ? ' dsh-quota-total--low' : ''}`}>{fmt(primary.total)}</span>
             <span className="dsh-quota-currency">{primary.currency}</span>
           </div>
           {usage.data !== null && (
-            <div className="dsh-quota-row" title={`今日消耗（估算）· ${usageAgeText}`}>
-              <span className="dsh-quota-label">今日消耗</span>
+            <div className="dsh-quota-row" title={t('widget.todayCostTitle', { age: usageAgeText })}>
+              <span className="dsh-quota-label">{t('widget.todayCost')}</span>
               <span className="dsh-quota-value">¥ {fmt(usage.data.summary.today.cost)}</span>
             </div>
           )}
           {data?.isAvailable === false && (
             <div className="dsh-quota-row">
-              <span className="dsh-quota-label">状态</span>
-              <span className="dsh-quota-value dsh-quota-error">不可用</span>
+              <span className="dsh-quota-label">{t('common.status')}</span>
+              <span className="dsh-quota-value dsh-quota-error">{t('common.unavailable')}</span>
             </div>
           )}
         </div>
       )
     } else {
-      body = <div className="dsh-quota-body dsh-quota-error">暂无余额数据</div>
+      body = <div className="dsh-quota-body dsh-quota-error">{t('widget.noBalance')}</div>
     }
   }
 
@@ -385,7 +389,7 @@ export function QuotaWidget(): ReactElement | null {
       <div
         ref={rootRef}
         className="dsh-quota-card"
-        title="拖动到四个角落"
+        title={t('widget.dragCard')}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
@@ -394,9 +398,9 @@ export function QuotaWidget(): ReactElement | null {
       >
         <div className="dsh-quota-header">
           <div className="dsh-quota-title">
-            <span className="dsh-quota-grip" title="拖动以移动">⠇</span>
+            <span className="dsh-quota-grip" title={t('widget.dragGrip')}>⠇</span>
             <span className={dotClass} />
-            <span className="dsh-quota-name">DeepSeek 额度</span>
+            <span className="dsh-quota-name">{t('widget.title')}</span>
             {collapsed && primary !== null && (
               <span className={`dsh-quota-collapsed-total${low ? ' dsh-quota-total--low' : ''}`}>{fmt(primary.total)} {primary.currency}</span>
             )}
@@ -405,8 +409,8 @@ export function QuotaWidget(): ReactElement | null {
             <button
               className="dsh-quota-btn"
               type="button"
-              title="刷新余额与今日用量"
-              aria-label="刷新余额与今日用量"
+              title={t('widget.refresh')}
+              aria-label={t('widget.refresh')}
               disabled={loading}
               onClick={() => {
                 void load(true, true)
@@ -418,8 +422,8 @@ export function QuotaWidget(): ReactElement | null {
             <button
               className="dsh-quota-btn"
               type="button"
-              title={collapsed ? '展开' : '收起'}
-              aria-label={collapsed ? '展开额度窗口' : '收起额度窗口'}
+              title={collapsed ? t('widget.expand') : t('widget.collapse')}
+              aria-label={collapsed ? t('widget.expandAria') : t('widget.collapseAria')}
               aria-expanded={!collapsed}
               onClick={() => {
                 const next = !collapsed

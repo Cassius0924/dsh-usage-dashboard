@@ -2,8 +2,8 @@
 
 ## 当前阶段
 
-用户指定下一项为中英文 i18n；完成后暂停扩张复杂业务功能，集中做 UI 设计美化、交互优化和用户体验提升。
-Judge 评分：交互 9.5 / 样式 9.1 / 功能 9.7。当前无 P0；i18n 是下一项明确 P1。
+中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，下一轮集中做 UI 设计美化、交互优化和用户体验提升。
+Judge 评分：交互 9.6 / 样式 9.2 / 功能 9.7。当前无 P0 / P1；下一轮进入 UI / UX 打磨。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -84,6 +84,19 @@ Judge 评分：交互 9.5 / 样式 9.1 / 功能 9.7。当前无 P0；i18n 是下
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 27）`feat(i18n)`: 中英文界面与 DSH 原生语言设置集成。
+  - Review / Critique：P1 插件全部硬编码中文，与 DSH 已有中英文环境冲突；P1 单独做插件语言开关会与宿主偏好打架；
+    P1 tab / overlay、tooltip、缓存失败和无障碍文案若只翻主页面会形成半成品；P2 英文长文案会放大窄屏裁切问题。
+  - Act：注册完整中英 namespace，由 DSH locale 服务向两个 slot 注入响应式翻译函数；仪表盘、悬浮窗、图表、
+    新鲜度、错误边界与所有交互文案统一取词，host 中文错误在 client 侧映射为当前语言。英文数字使用 compact notation；
+    620px 下根容器显式封顶到 DSH 图标栏右侧，消除宿主隐性 701px 最小宽度造成的裁切。
+  - Verify：37/37 单测（双语键 / 占位符对称、无中文残留、host 错误映射、英文紧凑数字）、build、typecheck 全过；
+    服务 active，登录 / 根页面 / client bundle 均 200。Playwright 从 DSH Settings 切 English 后，tab=`Usage`、9 张卡、
+    悬浮窗、统计周期 / 指标、柱图 / 热力图 tooltip 与缓存失败提示均为英文；硬刷新后仍为 English，证明宿主持久化生效；
+    再切中文无需刷新且完整恢复。620px 实测 document 620/620、dashboard 564/564，无裁切或横向溢出；
+    除故意注入 HTTP 500 的 1 条预期资源错误外 console error 0、pageerror 0。语言已恢复中文。
+    截图：`/tmp/dsh-i18n-audit/english-dashboard.png`、`english-narrow.png`、`chinese-dashboard.png`。
 
 - （轮次 25 → 26）`fix(dashboard)`: 按产品决策撤回异常消耗侦测。
   - Review / Critique：P1 实际历史只有少量活跃日，所谓“日常基线”没有统计可信度；P1 本机日志缺少其他设备、

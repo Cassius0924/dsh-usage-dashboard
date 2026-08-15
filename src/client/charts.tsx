@@ -1,5 +1,7 @@
 /** Dependency-free bar chart and heatmap primitives. */
 import { useEffect, useRef, useState, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
+import { useI18n, type LocaleId } from './i18n.tsx'
+import type { LocaleKey } from './locales.ts'
 
 export interface BarDatum {
   label: string
@@ -170,6 +172,7 @@ function heatColor(level: number): string {
  */
 export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
   const { data } = props
+  const { t, locale } = useI18n()
   const { wrapRef, tip, show, hide } = useChartTip()
   let max = 0
   for (const datum of data) if (datum.total > max) max = datum.total
@@ -194,7 +197,7 @@ export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
     const month = first.date.slice(0, 7)
     if (month === lastMonth) return ''
     lastMonth = month
-    return `${Number(first.date.slice(5, 7))}月`
+    return t(`chart.month${Number(first.date.slice(5, 7))}` as LocaleKey)
   })
 
   const levelOf = (total: number): number => {
@@ -211,7 +214,12 @@ export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
             <div key={w} className="dq-heat-week">
               {week.map((datum, d) => {
                 if (datum === null) return <div key={d} className="dq-heat-cell dq-heat-cell--pad" />
-                const text = `${datum.date} · ${datum.total.toLocaleString()} tokens · ¥${datum.cost.toFixed(2)} · ${datum.calls} 次调用`
+                const text = t('chart.tooltip', {
+                  head: datum.date,
+                  tokens: datum.total.toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN'),
+                  cost: datum.cost.toFixed(2),
+                  calls: t('common.calls', { count: datum.calls }),
+                })
                 return (
                   <div
                     key={d}
@@ -231,11 +239,11 @@ export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
       </div>
       <ChartTip tip={tip} />
       <div className="dq-heat-scale">
-        <span>少</span>
+        <span>{t('chart.less')}</span>
         {[0, 1, 2, 3, 4].map(level => (
           <span key={level} className="dq-heat-key" style={{ background: heatColor(level) }} />
         ))}
-        <span>多</span>
+        <span>{t('chart.more')}</span>
       </div>
     </div>
   )
@@ -249,8 +257,11 @@ export const fmt = (v: string | number): string => {
 
 export const fmtInt = (v: number | undefined): string => Math.round(Number(v) || 0).toLocaleString()
 
-export const fmtCompact = (v: number | undefined): string => {
+export const fmtCompact = (v: number | undefined, locale: LocaleId = 'zh'): string => {
   const n = Number(v) || 0
+  if (locale === 'en') {
+    return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(n)
+  }
   if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1)}亿`
   if (n >= 10_000) return `${(n / 10_000).toFixed(1)}万`
   return Math.round(n).toLocaleString()

@@ -1,3 +1,5 @@
+import { fallbackT, type Translate } from './i18n.tsx'
+
 /** Value axis shared by daily, hourly, and per-model usage charts. */
 export const CHART_METRICS = ['tokens', 'cost', 'calls'] as const
 export type ChartMetric = (typeof CHART_METRICS)[number]
@@ -17,8 +19,8 @@ export function chartMetricValue(metric: ChartMetric, point: ChartMetricPoint): 
   return point.total
 }
 
-export function chartMetricName(metric: ChartMetric): string {
-  if (metric === 'cost') return '费用'
-  if (metric === 'calls') return '调用'
-  return '用量'
+export function chartMetricName(metric: ChartMetric, t: Translate = fallbackT): string {
+  if (metric === 'cost') return t('metric.cost')
+  if (metric === 'calls') return t('metric.calls')
+  return t('metric.usage')
 }

@@ -7,6 +7,8 @@ import { ErrorBoundary } from './boundary.tsx'
 import type { ClientContext } from './context.ts'
 import { fetchBalance, fetchUsage } from './api.ts'
 import { BalanceDashboard } from './dashboard.tsx'
+import { LocaleProvider, type Translate } from './i18n.tsx'
+import { en, NS, zh } from './locales.ts'
 import { css } from './styles.ts'
 import { QuotaWidget } from './widget.tsx'
 
@@ -14,13 +16,15 @@ import { QuotaWidget } from './widget.tsx'
 export const name = 'dsh-usage-dashboard'
 
 /** Services required before load. */
-export const inject = ['slots']
+export const inject = ['slots', 'locale']
 
 /**
  * Mount the two surfaces.
  * @param ctx - client Cordis context.
  */
 export function apply(ctx: ClientContext): void {
+  ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-usage-dashboard: browser dictionaries')
+  const t = ctx.locale.bind(NS)
   // One stylesheet for the whole plugin; the module loader claims and removes
   // plugin-owned style tags on unload.
   if (typeof document !== 'undefined') {
@@ -41,12 +45,20 @@ export function apply(ctx: ClientContext): void {
   void fetchUsage().catch(() => {})
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register(
-    { name: 'shell.overlay', id: 'deepseek-quota', order: 1000, label: 'DeepSeek 额度' },
-    () => <ErrorBoundary silent><QuotaWidget /></ErrorBoundary>,
+    { name: 'shell.overlay', id: 'deepseek-quota', order: 1000, locale: NS, label: () => t('widget.title') },
+    ({ t: slotT }: { t: Translate }) => (
+      <LocaleProvider t={slotT}>
+        <ErrorBoundary t={slotT} silent><QuotaWidget /></ErrorBoundary>
+      </LocaleProvider>
+    ),
   ))
 
   ctx.slots.inject('conversation.view', () => ctx.slots.register(
-    { name: 'conversation.view', id: 'balance', order: 20, label: '额度' },
-    () => <ErrorBoundary><BalanceDashboard /></ErrorBoundary>,
+    { name: 'conversation.view', id: 'balance', order: 20, locale: NS, label: () => t('nav.quota') },
+    ({ t: slotT }: { t: Translate }) => (
+      <LocaleProvider t={slotT}>
+        <ErrorBoundary t={slotT}><BalanceDashboard /></ErrorBoundary>
+      </LocaleProvider>
+    ),
   ))
 }

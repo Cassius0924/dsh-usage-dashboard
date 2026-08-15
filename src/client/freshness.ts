@@ -1,22 +1,24 @@
+import { fallbackT, type Translate } from './i18n.tsx'
+
 export type SyncState = 'syncing' | 'fresh' | 'cached' | 'fallback' | 'error'
 
 /** Short, stable freshness copy for the dashboard status row. */
-export function updatedText(updatedAt: number | null, nowMs = Date.now()): string {
-  if (updatedAt === null || !Number.isFinite(updatedAt)) return '尚无成功记录'
+export function updatedText(updatedAt: number | null, nowMs = Date.now(), t: Translate = fallbackT): string {
+  if (updatedAt === null || !Number.isFinite(updatedAt)) return t('fresh.none')
   const elapsed = Math.max(0, nowMs - updatedAt)
-  if (elapsed < 60_000) return '刚刚更新'
+  if (elapsed < 60_000) return t('fresh.justNow')
   const minutes = Math.floor(elapsed / 60_000)
-  if (minutes < 60) return `更新于 ${minutes} 分钟前`
+  if (minutes < 60) return t('fresh.minutes', { count: minutes })
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `更新于 ${hours} 小时前`
-  return `更新于 ${Math.floor(hours / 24)} 天前`
+  if (hours < 24) return t('fresh.hours', { count: hours })
+  return t('fresh.days', { count: Math.floor(hours / 24) })
 }
 
-export function syncStatusText(state: SyncState, updatedAt: number | null, nowMs = Date.now()): string {
-  const age = updatedText(updatedAt, nowMs)
-  if (state === 'syncing') return updatedAt === null ? '首次同步中' : `同步中 · 当前数据${age}`
-  if (state === 'fresh') return `已同步 · ${age}`
-  if (state === 'cached') return `缓存数据 · ${age}`
-  if (state === 'fallback') return `缓存回退 · ${age}`
-  return '同步失败 · 暂无可显示的用量'
+export function syncStatusText(state: SyncState, updatedAt: number | null, nowMs = Date.now(), t: Translate = fallbackT): string {
+  const age = updatedText(updatedAt, nowMs, t)
+  if (state === 'syncing') return updatedAt === null ? t('sync.first') : t('sync.syncing', { age })
+  if (state === 'fresh') return t('sync.fresh', { age })
+  if (state === 'cached') return t('sync.cached', { age })
+  if (state === 'fallback') return t('sync.fallback', { age })
+  return t('sync.error')
 }

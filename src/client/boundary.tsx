@@ -8,6 +8,7 @@
  * default state.
  */
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import type { Translate } from './i18n.tsx'
 
 const PREFIX = 'dsh-usage-dashboard:'
 
@@ -26,6 +27,7 @@ function clearPluginStorage(): void {
 interface Props {
   /** Shown instead of the fallback UI when the surface has no room for it. */
   silent?: boolean
+  t: Translate
   children: ReactNode
 }
 
@@ -53,16 +55,15 @@ export class ErrorBoundary extends Component<Props, State> {
     const { message } = this.state
     if (message === null) return this.props.children
     if (this.props.silent === true) return null
+    const { t } = this.props
     return (
       <div className="dq-balance">
         <div className="dq-card">
-          <div className="dq-card-title">额度面板出错了</div>
-          <p className="dq-empty">
-            渲染时抛了异常，通常是浏览器里存着旧版本的缓存数据。清掉本插件的本地数据再重新加载就能恢复。
-          </p>
+          <div className="dq-card-title">{t('boundary.title')}</div>
+          <p className="dq-empty">{t('boundary.body')}</p>
           <pre className="dq-crash">{message}</pre>
           <button type="button" className="dq-refresh-btn" onClick={this.reset}>
-            清除本地数据并重新加载
+            {t('boundary.reset')}
           </button>
         </div>
       </div>
