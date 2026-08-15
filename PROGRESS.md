@@ -5,9 +5,9 @@
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
 轮次 32 后用户进一步收拢方向：接下来优先做**界面排版设计优化**（信息层级、留白、栅格/对齐、窄屏重排），
 交互细节打磨降为次优先。轮次 34-36 已做完脑暴轮次 #7（真实截图+源码审计）里的全部 3 个 P1 排版候选（悬浮窗
-折叠态标题截断、余额数字视觉权重、卡片容器权重分级）。Judge 评分：交互 9.9 / 样式 9.4 / 功能 9.7。当前无
-P0/P1；排版专项剩余 6 个 P2（间距疏密对比、窄屏用量统计断行、合并官方平台卡片、拆分 DSH 用量卡片、
-字号档位收敛、宽屏内容宽度评估），继续按优先级扫描。
+折叠态标题截断、余额数字视觉权重、卡片容器权重分级）；轮次 37 接着做完该轮次第一个 P2（卡片间距与卡内
+间距拉开疏密对比）。Judge 评分：交互 9.9 / 样式 9.4 / 功能 9.7。当前无 P0/P1；排版专项剩余 5 个 P2（窄屏
+用量统计断行、合并官方平台卡片、拆分 DSH 用量卡片、字号档位收敛、宽屏内容宽度评估），继续按优先级扫描。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -88,6 +88,50 @@ P0/P1；排版专项剩余 6 个 P2（间距疏密对比、窄屏用量统计断
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 37）`style(dashboard)`: 卡片间距与卡内间距拉开疏密对比。
+  - Review / Critique：P2 `.dq-balance{gap:16px}`（卡片与卡片之间的间距）和 `.dq-card{padding:16px}`
+    （卡片内边距）是同一个数值，卡内 `margin-top:12/14/16px` 这类小节分隔与卡片间距也挨得很近，
+    分隔"两张卡片"和"一张卡片的边界"用的是完全相同的空间量，"卡片外"与"卡片内"在视觉上没有区别，
+    谈不上"刻意的留白节奏"，与轮次 36 刚建立的主/次卡片视觉权重分级配合度不够。功能扫描继续遵循用户
+    方向，只调 `.dq-balance` 的 `gap`，不碰计价/统计口径，不动 `.dq-card`/`.dq-card--primary` 的 padding
+    （轮次 36 已定的另一件事）。
+  - Act：`.dq-balance{gap:16px}` 改为 `gap:24px`——相对卡内小节分隔最大档 `margin-top:16px` 仍有 1.5 倍
+    级差，相对常见档 `margin-top:12px` 有 2 倍级差，制造"卡片外疏、卡片内密"的对比。全仓库排查后确认
+    `.dq-balance` 是唯一表达"卡片与卡片之间"语义的规则（`.dq-balance-grid{gap:12px 24px}` 是卡片内部
+    一组统计项的行内间距，`.dq-card-head`/`.dq-session-head`/`.dq-rank-head` 等其余 `gap` 都是卡内行内
+    元素间距，语义不同，未改动）；620px 窄屏媒体查询只覆盖 `padding`，未重复声明 `gap`，因此窄屏也统一
+    吃到新的 24px（gap 只在 `flex-direction:column` 的纵向生效，不影响横向宽度，不会引入横向溢出）。
+  - Act（修复 1，独立 Critic 发现的 P1）：初次排查把"卡内小节间距最大档"认定为 `margin-top:16px`（即
+    `.dq-coverage`），但漏看了 `.dq-chart-title`/`.dq-chart-block-head` 这两条规则——原来是 `margin:18px
+    0 8px`，用在"DSH 用量"主卡片内部 daily/hourly 图表、热力图的小节标题起始处，是比 16px 更大的一档，
+    24/18≈1.33 倍，达不到验收标准"至少 1.5 倍"的要求。对 `src/client/styles.ts` 里全部 `margin-top`/
+    简写 `margin` 顶部分量做了一次完整 grep 复核（不再只挑看着像的规则），确认卡内小节档（带
+    `border-top` 分隔的 `.dq-budget`/`.dq-pricing`/`.dq-coverage`/`.dq-setting`，以及带小节标题语义的
+    `.dq-chart-title`/`.dq-chart-block-head`）里，18px 是唯一超过 16px 的例外，其余全部落在 12/14/16px
+    区间；卡内行内间距（`.dq-quota-row`/`.dq-budget-track`/`.dq-peak-legend` 等，无 `border-top`，用于
+    同一小节内部的行间/元素间距）范围是 2~14px，不受影响。选择方案 A：把这两条规则的 `margin-top` 从
+    18px 收到 16px，直接并入既有的卡内小节最大档，不新增独立例外档位（未选方案 B 把 `gap` 调到 ≥27px，
+    因为 24px 已经是和 `.dq-balance-grid{gap:12px 24px}`、`.dq-usage-totals` 等其它 24px 语义对齐的整
+    数值，改成 27+ 会打破这层一致性，收紧 18px→16px 影响面更小）。同步更新 DESIGN_NOTES.md 三档级差
+    段落，把 `.dq-chart-title`/`.dq-chart-block-head` 补进"卡内小节"举例，并写明这次完整 grep 复核的
+    覆盖范围。
+  - Verify（自测）：42/42 单测、build、typecheck 全过（exit 0）；`lib/client.js` 内确认 `.dq-balance` 桌面
+    与 620px 两条规则里 `gap:24px` 都已生效，`.dq-card`/`.dq-card--primary` 的 padding 值（16px/20px）
+    未被改动，`.dq-chart-title`/`.dq-chart-block-head` 的 `margin-top` 已从 18px 变为 16px。静态复核：
+    `gap` 是纵向容器的行间距，不产生新的横向内容宽度，620px 断点下既有的 `max-width:calc(100vw - 56px)`、
+    `.dq-card-head` 换行规则、`--dq-composer-h` 底部安全区 `calc()` 均未触碰，理论上不会新增横向溢出；
+    `.dq-balance` 的直接子元素是 `.dq-status-row` + 9 张 `.dq-card`（`balanceLow` 为真时还多一个
+    `.dq-alert`），flex-column 下 gap 数 = 子元素数－1，是 9 处卡片间距（不含告警条，10 个子元素、9 条
+    间隙）各 +8px，累计增加约 72px；`balanceLow` 为真时多 1 条间隙，10 处 +80px；此前记录的"8 处
+    +64px"是算术错误，已在本条修正。属预期（验收标准 4 允许）。
+    独立 QA：Playwright 实测 `.dq-balance` gap 计算值 `24px`、`.dq-chart-title`/`.dq-chart-block-head`
+    `margin-top` 计算值 `16px`、`.dq-card--primary`/`.dq-card` 的 `padding-top` 分别仍为 `20px`/`16px`；
+    几何测量 9 处卡片间隙实测均为 24px、图表小节标题间距实测 16px，1.5 倍级差成立。1440/1024/620/390
+    四档视口 `document.scrollWidth===clientWidth`，均无横向溢出；620px 下滚动到真实滚动容器底部，设置卡
+    完整落在 composer 安全区之上（未被遮挡），DSH 用量卡片头部仍按既有规则换行、无重叠溢出；截图确认
+    图表标题收紧到 16px 后与上下内容仍有清晰视觉分隔，不显局促；卡片外间距与轮次 36 权重分级叠加后层级
+    感更清晰。console error 3 条为既有已知噪音，pageerror 0。截图：`/tmp/dsh-ui-audit/round37-*.png`。
 
 - （轮次 36）`style(dashboard)`: 卡片容器视觉权重分级。
   - Review / Critique：P1 全站 9 张卡片共用同一套 `.dq-card{padding:16px}` / `.dq-card-title{font-size:12px;
