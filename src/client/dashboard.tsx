@@ -12,8 +12,9 @@ import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
+import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
-import { lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
+import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
 function Skel(props: { w: number; h: number }): ReactElement {
@@ -645,6 +646,27 @@ function UsageWindowPicker(props: { value: UsageWindowDays; onChange: (days: Usa
   )
 }
 
+const chartMetricLabel = (metric: ChartMetric): string => metric === 'tokens' ? 'tokens' : chartMetricName(metric)
+
+function ChartMetricPicker(props: { value: ChartMetric; onChange: (metric: ChartMetric) => void }): ReactElement {
+  return (
+    <div className="dq-chart-switch" role="group" aria-label="图表指标">
+      {CHART_METRICS.map(metric => (
+        <button
+          key={metric}
+          type="button"
+          className={`dq-chart-switch-btn${props.value === metric ? ' dq-chart-switch-btn--on' : ''}`}
+          aria-pressed={props.value === metric}
+          title={`按${chartMetricLabel(metric)}比较`}
+          onClick={() => props.onChange(metric)}
+        >
+          {chartMetricLabel(metric)}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function BalanceDashboard(): ReactElement {
   // Seed state from the cache so the tab never waits on the network when
   // data has been fetched before (stale-while-revalidate).
@@ -671,6 +693,7 @@ export function BalanceDashboard(): ReactElement {
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
   const [selectedModels, setSelectedModels] = useState<string[]>([])
   const [windowDays, setWindowDays] = useState<UsageWindowDays>(usageWindowStore.get())
+  const [chartMetric, setChartMetric] = useState<ChartMetric>(chartMetricStore.get())
   const budgetInputRef = useRef<HTMLInputElement | null>(null)
 
   // The full dashboard and the floating summary should never compete for the
@@ -767,6 +790,11 @@ export function BalanceDashboard(): ReactElement {
     usageWindowStore.set(value)
   }
 
+  const changeChartMetric = (value: ChartMetric): void => {
+    setChartMetric(value)
+    chartMetricStore.set(value)
+  }
+
   const primary = balance !== null && balance.balances.length > 0 ? balance.balances[0] : null
 
   // Runway: balance divided by the last 7 calendar days' average spend. Idle
@@ -791,13 +819,13 @@ export function BalanceDashboard(): ReactElement {
 
   const dailyBars = (activeWindow?.daily ?? []).map(d => ({
     label: windowDays === 365 ? d.date.slice(5).replace('-', '/') : d.date.slice(8, 10),
-    value: d.total,
+    value: chartMetricValue(chartMetric, d),
     title: `${d.date} · ${fmtInt(d.total)} tokens · ¥${fmt(d.cost)} · ${d.calls} 次调用`,
   }))
   const hourlyBars = (activeWindow?.hourly ?? []).map(h => ({
     label: String(h.hour),
-    value: h.total,
-    title: `${h.hour} 点 · ${fmtInt(h.total)} tokens · ${h.calls} 次调用`,
+    value: chartMetricValue(chartMetric, h),
+    title: `${h.hour} 点 · ${fmtInt(h.total)} tokens · ¥${fmt(h.cost)} · ${h.calls} 次调用`,
   }))
 
   // One canonical model order — most expensive first — shared by the ranking
@@ -807,6 +835,9 @@ export function BalanceDashboard(): ReactElement {
   // only thing giving the bars a magnitude.
   const chartPeak = (barMode === 'daily' ? dailyBars : hourlyBars)
     .reduce((peak, bar) => (bar.value > peak ? bar.value : peak), 0)
+  const chartPeakText = chartMetric === 'cost'
+    ? `¥${fmt(chartPeak)}`
+    : chartMetric === 'calls' ? `${fmtInt(chartPeak)} 次` : `${fmtCompact(chartPeak)} tokens`
 
   const modelList = [...(activeWindow?.models ?? [])].sort((a, b) => b.cost - a.cost)
   const canonicalModels = [...(usage?.models ?? [])].sort((a, b) => b.cost - a.cost)
@@ -829,8 +860,10 @@ export function BalanceDashboard(): ReactElement {
         name,
         color,
         bars: (m?.daily ?? []).map((p, i) => ({
-          label: (activeWindow?.daily ?? [])[i]?.date.slice(8, 10) ?? '',
-          value: p.total,
+          label: windowDays === 365
+            ? ((activeWindow?.daily ?? [])[i]?.date.slice(5).replace('-', '/') ?? '')
+            : ((activeWindow?.daily ?? [])[i]?.date.slice(8, 10) ?? ''),
+          value: chartMetricValue(chartMetric, p),
           title: `${name} · ${(activeWindow?.daily ?? [])[i]?.date ?? ''} · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
         })),
       }
@@ -841,7 +874,7 @@ export function BalanceDashboard(): ReactElement {
       color,
       bars: (m?.hourly ?? []).map((p, i) => ({
         label: String(i),
-        value: p.total,
+        value: chartMetricValue(chartMetric, p),
         title: `${name} · ${i} 点 · ${fmtInt(p.total)} tokens · ¥${fmt(p.cost)} · ${p.calls} 次调用`,
       })),
     }
@@ -980,11 +1013,14 @@ export function BalanceDashboard(): ReactElement {
             </div>
             <div className="dq-chart-block-head">
               <div className="dq-chart-title">
-                {barMode === 'daily' ? `${activeWindowName} · 逐天用量` : `${activeWindowName} · 按小时分布（0–23 点）`}
-                {chartPeak > 0 && <span className="dq-chart-peak">峰值 {fmtCompact(chartPeak)} tokens</span>}
+                {barMode === 'daily'
+                  ? `${activeWindowName} · 逐天${chartMetricName(chartMetric)}`
+                  : `${activeWindowName} · ${chartMetricName(chartMetric)}按小时分布（0–23 点）`}
+                {chartPeak > 0 && <span className="dq-chart-peak">峰值 {chartPeakText}</span>}
               </div>
               <div className="dq-chart-controls">
                 <ModelPicker models={modelList} selected={effectiveSelection} colorOf={colorOf} onChange={setSelectedModels} />
+                <ChartMetricPicker value={chartMetric} onChange={changeChartMetric} />
                 <div className="dq-chart-switch" role="tablist" aria-label="切换图表维度">
                   <button
                     type="button"

@@ -188,7 +188,8 @@ export const css = `
 .dq-chart-title:first-of-type{margin-top:0}
 .dq-chart-block-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:18px 0 8px}
 .dq-chart-block-head .dq-chart-title{margin:0}
-.dq-chart-controls{display:flex;align-items:center;gap:8px;flex:none}
+.dq-chart-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex:none;flex-wrap:wrap}
+@media (max-width:620px){.dq-chart-block-head{align-items:flex-start;flex-direction:column}.dq-chart-controls{width:100%}}
 .dq-model-picker{position:relative}
 .dq-model-btn{border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#59636e);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
 .dq-model-btn:hover{border-color:var(--dsw-alias-state-business-primary,#0969da);color:var(--dsw-alias-state-business-primary,#0969da)}

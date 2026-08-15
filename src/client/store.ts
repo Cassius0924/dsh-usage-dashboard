@@ -4,6 +4,7 @@
  * so a choice survives a page refresh.
  */
 import { USAGE_WINDOW_DAYS, type UsageWindowDays } from '../contract.ts'
+import { isChartMetric, type ChartMetric } from './metric.ts'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
 
 export interface Store<T> {
@@ -49,6 +50,9 @@ const isUsageWindowDays = (value: unknown): value is UsageWindowDays =>
 
 /** Shared time range for the usage chart and both cost rankings. */
 export const usageWindowStore = createStore<UsageWindowDays>('usage.windowDays', isUsageWindowDays, 30)
+
+/** Whether charts compare token volume, estimated CNY cost, or call count. */
+export const chartMetricStore = createStore<ChartMetric>('usage.chartMetric', isChartMetric, 'tokens')
 
 /** Ephemeral presence of the full dashboard. The widget uses it to step out of
  * the way without changing the user's persisted visibility preference. */
