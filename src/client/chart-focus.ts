@@ -22,3 +22,23 @@ export function lastPopulatedIndex(values: number[]): number {
   }
   return Math.max(0, values.length - 1)
 }
+
+/**
+ * Touch tap toggles a chart point's tooltip pin: tapping the already-pinned
+ * point releases it, tapping any other point (or none pinned yet) pins that
+ * one instead. Shared by bar, grouped-bar and heatmap touch handling so pin
+ * state never forks into a parallel machine per chart type.
+ */
+export function nextPinnedIndex(current: number | null, tapped: number): number | null {
+  return current === tapped ? null : tapped
+}
+
+/**
+ * Distinguishes a tap from a scroll/drag using the touch/pointer start-to-end
+ * displacement and elapsed time. A page scroll that merely passes over a data
+ * point moves well past `moveThreshold` before release; a long press held past
+ * `timeThreshold` without lifting is not a quick tap either.
+ */
+export function isTapGesture(dx: number, dy: number, dt: number, moveThreshold = 10, timeThreshold = 500): boolean {
+  return Math.hypot(dx, dy) <= moveThreshold && dt <= timeThreshold
+}

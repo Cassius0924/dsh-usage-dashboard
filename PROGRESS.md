@@ -3,7 +3,8 @@
 ## 当前阶段
 
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
-Judge 评分：交互 9.9 / 样式 9.3 / 功能 9.7。当前无 P0；UI 专项剩余 P1 为图表触屏点按与窄屏底部安全区。
+轮次 32 后用户进一步收拢方向：接下来优先做**界面排版设计优化**（信息层级、留白、栅格/对齐、窄屏重排），
+交互细节打磨降为次优先。Judge 评分：交互 9.9 / 样式 9.3 / 功能 9.7。当前无 P0；UI 专项剩余 P1 为窄屏底部安全区。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -84,6 +85,31 @@ Judge 评分：交互 9.9 / 样式 9.3 / 功能 9.7。当前无 P0；UI 专项�
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 32）`fix(charts)`: 图表触屏点按明细。
+  - Review / Critique：P1 移动端没有 hover，柱图 / 分模型柱图 / 热力图的 tooltip 只靠 `pointermove` 触发，
+    触屏 tap 会先短暂出现再随手指离开（`pointerleave`/`pointerout`）立刻消失，用户来不及读；P1 若简单地用
+    `touchstart`/`click` 弹出 tooltip，横向滚动 365 天柱图或纵向滚动整页时手指划过数据点会被误判成点按；
+    P2 已固定的点缺少不依赖 `:focus-visible` 的视觉反馈，纯触屏用户看不出"已固定"状态。功能扫描继续遵循
+    UI / 交互优先，不扩张业务口径，只加触屏路径，不改桌面 hover 与轮次 31 的键盘 roving tabindex。
+  - Act：`chart-focus.ts` 新增两个纯函数并入单测覆盖的状态协调逻辑——`nextPinnedIndex` 决定"点同一点关闭 /
+    点别的点切换"的固定态；`isTapGesture` 用位移 + 耗时双阈值区分点按与拖动/长按。`charts.tsx` 的
+    `useChartTip` 收敛为柱图 / 分模型柱图 / 热力图共用的单一状态机：`pointerType==='touch'` 时不再走
+    `pointermove` 悬浮显示（避免滑动拖影），改由 `pointerdown`→`pointerup` 位移耗时判定是否为一次点按，
+    是则据 `nextPinnedIndex` 切换固定态；`pinnedRef` 与 `pinned` state 同步更新，`hide()` 在固定态下直接
+    no-op，避免 `touchend` 后紧随的 `pointerleave` 在同一 tick 里用陈旧闭包读到"未固定"而把刚固定的 tooltip
+    冲掉；文档级 `pointerdown` 监听在图表容器之外点按时清除固定态。全程不调用 `preventDefault`，页面/图表
+    横向滚动行为不受影响。新增 `dq-bar-col--pinned` / `dq-bar--pinned` / `dq-heat-cell--pinned` 三个类名，
+    复用既有 `--dsw-alias-state-business-primary` 描边，与 hover / focus-visible 视觉语言一致。
+  - Verify：新增 2 个纯函数单测（固定态切换 3 例、点按/拖动/长按判定 6 例），42/42 全过；build、typecheck
+    全过（exit 0）；`dsh.service` active，client 端改动无需重启。Playwright 模拟触屏 context（390×844，
+    `hasTouch`）实测：tap 逐天柱图数据点后 `class` 带 `--pinned`、`.dq-tip` 计数 0→1 并显示完整明细；
+    再次 tap 同点 class 与 tooltip 计数均归零；tap 图表外部（页面左上角）同样清除固定态；用 CDP 派发
+    真实滑动序列（累计位移远超 10px 阈值）后未误触发固定；热力图格子 tap 固定 / 再 tap 取消同样通过。
+    桌面 context（1280×900）回归：mouse hover 出现/移开消失 tooltip 正常；轮次 31 键盘 roving tabindex
+    无回归——初始仅 1 个 `tabindex=0` 入口，`ArrowLeft` 从 08-15 移动到 08-14 并同步 tooltip，`Home`/`End`
+    分别跳到 07-18/08-16。分模型柱图因该会话默认未勾选多模型未直接驱动，但复用同一 `useChartTip` 状态机，
+    逻辑路径与已验证的两种图表一致。全程 console error 0、pageerror 0。截图：`/tmp/dsh-ui-audit/02`–`10`。
 
 - （轮次 31）`fix(charts)`: 图表支持无焦点陷阱的键盘探索。
   - Review / Critique：P1 普通柱图、分模型柱图和热力格只有 pointer tooltip，`aria-label` 所在节点不可聚焦，键盘读不到；

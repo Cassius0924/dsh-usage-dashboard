@@ -50,3 +50,10 @@
   两个 slot 各包一层 ErrorBoundary 兜底。**以后 UI 每新读一个顶层字段，要在 api.ts 的校验里补一行。**
 - 截图脚本：`/tmp/claude-0/.../scratchpad/shot.mjs`（playwright 从 `/root/.npm/_npx/e41f203b7505f1fb/node_modules/` 取，
   需 `PLAYWRIGHT_BROWSERS_PATH=/root/.cache/ms-playwright` 且清空 `HTTP(S)_PROXY`）。
+- **触屏 `touchend` 之后紧跟的 `pointerleave`/`pointerout` 在同一 tick 内触发，早于 React 重渲染**；
+  如果"固定 tooltip"的判定读的是 state 闭包（上一次渲染时捕获的值），`pointerup` 里刚 `setPinned(i)`，
+  紧接着的 `pointerleave` 处理器里读到的仍是渲染前的旧值，会把刚固定的 tooltip 立刻隐藏掉。
+  要用一个和 state 同步写入的 ref（`pinnedRef`）做判断，不能只依赖 state。
+- **触屏点按 tooltip 不能复用 `pointermove` 的 hover 展示路径**：`pointermove` 对触摸同样会连续触发
+  （手指划过时），如果不按 `pointerType==='touch'` 短路掉，拖动/滚动图表时会连续弹出沿途每个点的 tooltip。
+  改为只在 `pointerdown`→`pointerup` 且位移 / 耗时都低于阈值时才判定为一次点按。

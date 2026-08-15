@@ -1,6 +1,6 @@
 /** Dependency-free bar chart and heatmap primitives. */
 import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
-import { lastPopulatedIndex, nextChartFocus, type ChartFocusKey } from './chart-focus.ts'
+import { isTapGesture, lastPopulatedIndex, nextChartFocus, nextPinnedIndex, type ChartFocusKey } from './chart-focus.ts'
 import { useI18n, type LocaleId } from './i18n.tsx'
 import type { LocaleKey } from './locales.ts'
 
@@ -23,16 +23,33 @@ interface TipState {
  * Cursor-following tooltip shared by every chart. The native `title` attribute
  * this replaces waited about a second, could not be styled to match the shell,
  * and never appeared on touch.
+ *
+ * Touch has no hover, so a tap pins the tooltip open instead of showing it only
+ * while the finger is down (which produced the original one-flicker-then-gone
+ * complaint). `pinned` and `hide()` share one `pinnedRef` so a `touchend`
+ * followed synchronously by `pointerleave` — both native events fired in the
+ * same tick, before React re-renders — never reads a stale "nothing pinned"
+ * state and hides the tooltip it was just asked to pin.
  */
 function useChartTip(): {
   wrapRef: MutableRefObject<HTMLDivElement | null>
   tip: TipState | null
+  pinned: number | null
   show: (e: ReactPointerEvent<HTMLElement>, text: string | undefined) => void
   showFocused: (e: ReactFocusEvent<HTMLElement>, text: string | undefined) => void
   hide: () => void
+  onPointStart: (e: ReactPointerEvent<HTMLElement>) => void
+  onPointEnd: (e: ReactPointerEvent<HTMLElement>, index: number, text: string | undefined) => void
 } {
   const wrapRef = useRef<HTMLDivElement | null>(null)
   const [tip, setTip] = useState<TipState | null>(null)
+  const [pinned, setPinned] = useState<number | null>(null)
+  const pinnedRef = useRef<number | null>(null)
+  const touchStart = useRef<{ x: number; y: number; t: number } | null>(null)
+  const setPin = (next: number | null): void => {
+    pinnedRef.current = next
+    setPinned(next)
+  }
   const showAt = (target: HTMLElement, text: string | undefined, clientX?: number, clientY?: number): void => {
     const wrap = wrapRef.current
     if (text === undefined || text === '' || wrap === null) return
@@ -45,12 +62,45 @@ function useChartTip(): {
     setTip({ x, y, lines: text.split(' · '), above: viewportY > window.innerHeight - 160 })
   }
   const show = (e: ReactPointerEvent<HTMLElement>, text: string | undefined): void => {
+    // Touch has no hover; a bare `pointermove` while a finger drags across the
+    // chart (e.g. scrolling the page) would otherwise flash tooltips at every
+    // point it crosses. Touch only opens a tooltip via the deliberate tap
+    // handled in `onPointEnd`.
+    if (e.pointerType === 'touch') return
     showAt(e.currentTarget, text, e.clientX, e.clientY)
   }
   const showFocused = (e: ReactFocusEvent<HTMLElement>, text: string | undefined): void => {
     showAt(e.currentTarget, text)
   }
-  return { wrapRef, tip, show, showFocused, hide: () => setTip(null) }
+  const hide = (): void => {
+    if (pinnedRef.current !== null) return
+    setTip(null)
+  }
+  const onPointStart = (e: ReactPointerEvent<HTMLElement>): void => {
+    if (e.pointerType === 'touch') touchStart.current = { x: e.clientX, y: e.clientY, t: Date.now() }
+  }
+  const onPointEnd = (e: ReactPointerEvent<HTMLElement>, index: number, text: string | undefined): void => {
+    if (e.pointerType !== 'touch') return
+    const start = touchStart.current
+    touchStart.current = null
+    if (start === null || !isTapGesture(e.clientX - start.x, e.clientY - start.y, Date.now() - start.t)) return
+    const next = nextPinnedIndex(pinnedRef.current, index)
+    setPin(next)
+    if (next === null) setTip(null)
+    else showAt(e.currentTarget, text, e.clientX, e.clientY)
+  }
+  useEffect(() => {
+    if (pinned === null) return undefined
+    const onDocPointerDown = (e: PointerEvent): void => {
+      const wrap = wrapRef.current
+      if (wrap !== null && e.target instanceof Node && wrap.contains(e.target)) return
+      setPin(null)
+      setTip(null)
+    }
+    document.addEventListener('pointerdown', onDocPointerDown)
+    return () => document.removeEventListener('pointerdown', onDocPointerDown)
+  }, [pinned])
+  return { wrapRef, tip, pinned, show, showFocused, hide, onPointStart, onPointEnd }
 }
 
 function useRovingChartPoints(count: number, initial: number, horizontalStep = 1): {
@@ -90,7 +140,7 @@ export const MODEL_COLORS = ['#4176e6', '#2da44e', '#e16f24', '#8250df', '#bf870
 
 export function Bars(props: { data: BarDatum[]; height?: number; labelEvery?: number; minWidth?: number }): ReactElement {
   const { data, height = 120, labelEvery = 1, minWidth } = props
-  const { wrapRef, tip, show, showFocused, hide } = useChartTip()
+  const { wrapRef, tip, pinned, show, showFocused, hide, onPointStart, onPointEnd } = useChartTip()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const initialFocus = lastPopulatedIndex(data.map(datum => datum.value))
   const roving = useRovingChartPoints(data.length, initialFocus)
@@ -111,13 +161,15 @@ export function Bars(props: { data: BarDatum[]; height?: number; labelEvery?: nu
             return (
               <div
                 key={i}
-                className="dq-bar-col"
+                className={`dq-bar-col${pinned === i ? ' dq-bar-col--pinned' : ''}`}
                 role="img"
                 aria-label={text}
                 aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
                 tabIndex={i === roving.active ? 0 : -1}
                 ref={element => { roving.refs.current[i] = element }}
                 onPointerMove={e => show(e, text)}
+                onPointerDown={onPointStart}
+                onPointerUp={e => onPointEnd(e, i, text)}
                 onFocus={e => showFocused(e, text)}
                 onBlur={hide}
                 onKeyDown={e => roving.onKeyDown(e, i)}
@@ -149,7 +201,7 @@ export function GroupedBars(props: {
   minWidth?: number
 }): ReactElement {
   const { series, height = 120, labelEvery = 1, minWidth } = props
-  const { wrapRef, tip, show, showFocused, hide } = useChartTip()
+  const { wrapRef, tip, pinned, show, showFocused, hide, onPointStart, onPointEnd } = useChartTip()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const count = series.length > 0 ? series[0].bars.length : 0
   const pointValues = Array.from({ length: count }, (_, i) => series.map(s => s.bars[i]?.value ?? 0)).flat()
@@ -179,7 +231,7 @@ export function GroupedBars(props: {
                   return (
                     <div
                       key={s.key}
-                      className="dq-bar"
+                      className={`dq-bar${pinned === pointIndex ? ' dq-bar--pinned' : ''}`}
                       style={{ height: `${h}px`, background: s.color }}
                       role="img"
                       aria-label={text}
@@ -187,6 +239,8 @@ export function GroupedBars(props: {
                       tabIndex={pointIndex === roving.active ? 0 : -1}
                       ref={element => { roving.refs.current[pointIndex] = element }}
                       onPointerMove={e => show(e, text)}
+                      onPointerDown={onPointStart}
+                      onPointerUp={e => onPointEnd(e, pointIndex, text)}
                       onFocus={e => showFocused(e, text)}
                       onBlur={hide}
                       onKeyDown={e => roving.onKeyDown(e, pointIndex)}
@@ -224,7 +278,7 @@ function heatColor(level: number): string {
 export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
   const { data } = props
   const { t, locale } = useI18n()
-  const { wrapRef, tip, show, showFocused, hide } = useChartTip()
+  const { wrapRef, tip, pinned, show, showFocused, hide, onPointStart, onPointEnd } = useChartTip()
   const roving = useRovingChartPoints(data.length, lastPopulatedIndex(data.map(datum => datum.total)), 7)
   let max = 0
   for (const datum of data) if (datum.total > max) max = datum.total
@@ -272,20 +326,23 @@ export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
                   cost: datum.cost.toFixed(2),
                   calls: t('common.calls', { count: datum.calls }),
                 })
+                const index = w * 7 + d - firstDow
                 return (
                   <div
                     key={d}
-                    className="dq-heat-cell"
+                    className={`dq-heat-cell${pinned === index ? ' dq-heat-cell--pinned' : ''}`}
                     style={{ background: heatColor(levelOf(datum.total)) }}
                     role="img"
                     aria-label={text}
                     aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
-                    tabIndex={w * 7 + d - firstDow === roving.active ? 0 : -1}
-                    ref={element => { roving.refs.current[w * 7 + d - firstDow] = element }}
+                    tabIndex={index === roving.active ? 0 : -1}
+                    ref={element => { roving.refs.current[index] = element }}
                     onPointerMove={e => show(e, text)}
+                    onPointerDown={onPointStart}
+                    onPointerUp={e => onPointEnd(e, index, text)}
                     onFocus={e => showFocused(e, text)}
                     onBlur={hide}
-                    onKeyDown={e => roving.onKeyDown(e, w * 7 + d - firstDow)}
+                    onKeyDown={e => roving.onKeyDown(e, index)}
                   />
                 )
               })}
