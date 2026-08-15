@@ -220,14 +220,19 @@ export const css = `
 .dq-chart-wrap{position:relative}
 .dq-bars-scroll{overflow-x:auto;overflow-y:hidden;padding-bottom:2px}
 .dq-tip{position:absolute;transform:translate(-50%,14px);z-index:40;pointer-events:none;background:var(--dsw-alias-bg-inverse,#1f2328);color:var(--dsw-alias-label-inverse,#fff);border-radius:8px;padding:7px 10px;font-size:11.5px;line-height:1.55;white-space:nowrap;box-shadow:0 6px 20px rgba(0,0,0,.28);font-variant-numeric:tabular-nums}
+.dq-tip--above{transform:translate(-50%,calc(-100% - 8px))}
 .dq-tip-head{font-weight:650;margin-bottom:2px}
 .dq-tip-row{opacity:.85}
 .dq-bars{display:flex;align-items:flex-end;gap:2px;width:100%}
 .dq-bar-col{flex:1 1 0;min-width:0;display:flex;flex-direction:column;justify-content:flex-end;align-items:stretch}
 .dq-bar{background:var(--dsw-alias-state-business-primary,#4176e6);border-radius:2px 2px 0 0;min-height:1px;transition:filter .12s ease}
 .dq-bar-col{cursor:default}
+.dq-bar-col,.dq-bar,.dq-heat-cell{scroll-margin-block-start:24px;scroll-margin-block-end:160px}
 .dq-bar-col:hover .dq-bar{filter:brightness(1.18) saturate(1.1)}
+.dq-bar-col:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:-2px;border-radius:3px}
+.dq-bar:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:1px;filter:brightness(1.18) saturate(1.1);position:relative;z-index:2}
 .dq-heat-cell:not(.dq-heat-cell--pad):hover{outline:1.5px solid var(--dsw-alias-label-primary,#1f2328);outline-offset:1px}
+.dq-heat-cell:not(.dq-heat-cell--pad):focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:1px;position:relative;z-index:2}
 .dq-bar-label{font-size:9px;color:var(--dsw-alias-label-tertiary,#59636e);text-align:center;margin-top:3px;overflow:visible;white-space:nowrap}
 .dq-heat{display:flex;flex-direction:column;gap:8px;max-width:100%}
 .dq-heat-scroll{overflow-x:auto;padding-bottom:2px}

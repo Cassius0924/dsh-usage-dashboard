@@ -3,7 +3,7 @@
 ## 当前阶段
 
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
-Judge 评分：交互 9.8 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览层级、余额明细可达性与减少动态效果均已完成打磨。
+Judge 评分：交互 9.9 / 样式 9.3 / 功能 9.7。当前无 P0；UI 专项剩余 P1 为图表触屏点按与窄屏底部安全区。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -84,6 +84,17 @@ Judge 评分：交互 9.8 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 31）`fix(charts)`: 图表支持无焦点陷阱的键盘探索。
+  - Review / Critique：P1 普通柱图、分模型柱图和热力格只有 pointer tooltip，`aria-label` 所在节点不可聚焦，键盘读不到；
+    P1 若直接给 30 / 365 个点全部设置 `tabIndex=0` 会制造巨大的 Tab 队列；P2 底部热力格获得焦点时，tooltip 与固定输入框
+    容易重叠或被视口裁切。功能扫描从 UI 专项 backlog 选择最高优先级的图表可访问性，不增加业务口径。
+  - Act：三类图表使用 roving tabindex，每张图仅最近有数据点进入 Tab 序列；方向键移动、Home / End 到首尾，焦点自动滚入
+    安全区并同步 2px 焦点环、tooltip 与完整可访问名称。热力图左右按周、上下按日移动；靠近视口底部的 tooltip 自动向上展开。
+  - Verify：新增 3 个纯函数单测，合计 40/40；build、typecheck 全过。Playwright 真实 Tab 进入柱图，柱图 / 热力图 / 分模型
+    柱图各仅 1 个 `tabindex=0`；Home、End、ArrowLeft 实测从 8 月 15 日移动到 7 月 17 日、8 月 14 日并更新 tooltip，
+    焦点环均为 `2px solid`。中英文、余额 disclosure、620px、reduced-motion 与指针 hover 回归通过；除故意注入的
+    1 条 HTTP 500 外 console error 0、pageerror 0。截图：`/tmp/dsh-i18n-audit/chart-keyboard-bar.png`、`chart-keyboard-heat.png`。
 
 - （轮次 30）`fix(ui)`: 完整尊重系统「减少动态效果」偏好。
   - Review / Critique：P1 旧 reduced-motion 规则写在同步 / 刷新动画声明之前，同权重规则会被后文覆盖，实际仍会动；
