@@ -87,6 +87,26 @@ UI 专项排版类 P1 暂无剩余，继续按 backlog 扫描排版层级、留�
 
 ## 已完成（续）
 
+- （轮次 35）`style(dashboard)`: 账户余额数字独立视觉权重。
+  - Review / Critique：P1 DESIGN_NOTES 信息层级第一条明确要求余额为「最大号数字，24px 级」，但账户余额、
+    「近30天输入/输出/缓存命中」等次要分解数字全部复用同一个 `.dq-stat-value{font-size:18px;font-weight:650}`，
+    扫读时无法一眼分辨谁是首屏最高优先级数字，设计意图与实现脱节。功能扫描继续遵循用户方向，只动排版权重，
+    不碰计价 / 统计口径。
+  - Act：余额数字的容器元素本就带有专属类 `.dq-remaining`（此前只用于 `position:relative` 定位悬浮明细），
+    在该规则里补上 `font-size:22px;font-weight:680;letter-spacing:-.01em;line-height:1.25`——四个值逐一取自
+    本站已有的 hero 数字样式 `.dq-period-cost`（消耗概览「今日/本月/累计」数字），不新增字号档位；`.dq-remaining`
+    与 `.dq-stat-value` 同为单类选择器、后者在样式表中位置更靠后，天然覆盖而不需要 `!important` 或改选择器结构。
+    `.dq-stat-value` 基础规则、`.dq-runway`、`.dq-usage-totals` 里的分解数字、状态文字等其余复用场景未改一字。
+    另检查 `widget.tsx`：悬浮窗展开态余额走独立的 `.dsh-quota-total{font-size:24px;font-weight:700}`，从未
+    复用 `.dq-stat-value`，本就已经是本站字号最大的数字，不需要跟随改动，不属于本轮范围。
+  - Verify：42/42 单测、build、typecheck 全过（exit 0）。Playwright 实测计算样式：余额 `22px/680`，与
+    `.dq-period-cost` 完全一致；同卡片内「预计可用」`.dq-runway`、用量卡「近30天输入/输出」两个 `.dq-stat-value`
+    均保持原有 `18px/650` 不变；`font-variant-numeric` 均为 `tabular-nums`。中英文两种语言下余额文案
+    `42.11 CNY` 均不换行、不溢出；620px 窄屏下桌面与窄屏 `document.scrollWidth<=clientWidth` 均为
+    false（无横向溢出）；截图确认余额数字视觉上明显大于同卡「预计可用」「状态」与用量卡分解数字，语言切回
+    中文后 console error 0、pageerror 0。截图：`/tmp/dsh-balance-hero/desktop-zh.png`、`narrow-zh.png`、
+    `desktop-en.png`、`narrow-en.png`。待独立 QA 验证（键盘 / 触屏展开明细交互本轮未改动，沿用轮次 29 已验证的行为）。
+
 - （轮次 34）`style(widget)`: 悬浮窗折叠态标题截断。
   - Review / Critique：P1 收起态一行要同时容纳抓手 / 状态点 / 标题「DeepSeek 额度」/ 折叠总额「42.11 CNY」/
     刷新 / 展开五组元素，只有 `.dsh-quota-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}`

@@ -61,7 +61,9 @@ export const css = `
 .dq-stat-value--ok{color:var(--dsw-alias-state-success-primary,#2da44e)}
 .dq-stat-value--bad{color:var(--dsw-alias-state-error-primary,#cf222e)}
 .dq-runway{cursor:help;text-decoration:underline dotted var(--dsw-alias-border-l2,rgba(0,0,0,.25));text-underline-offset:4px}
-.dq-remaining{position:relative}
+/* hero number for the balance, matching .dq-period-cost; relies on cascade order (declared after
+   .dq-stat-value, same specificity) to win over the .dq-stat-value it's paired with in JSX — keep it below */
+.dq-remaining{position:relative;font-size:22px;font-weight:680;letter-spacing:-.01em;line-height:1.25}
 .dq-remaining>summary{display:inline-block;list-style:none;border-radius:4px;cursor:pointer;text-decoration:underline dotted var(--dsw-alias-border-l2,rgba(0,0,0,.25));text-underline-offset:4px}
 .dq-remaining>summary::-webkit-details-marker{display:none}
 .dq-remaining>summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:3px}
