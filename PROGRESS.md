@@ -3,7 +3,7 @@
 ## 当前阶段
 
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
-Judge 评分：交互 9.7 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览层级与余额明细可达性已完成打磨。
+Judge 评分：交互 9.8 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览层级、余额明细可达性与减少动态效果均已完成打磨。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -84,6 +84,16 @@ Judge 评分：交互 9.7 / 样式 9.3 / 功能 9.7。当前无 P0 / P1；概览
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 30）`fix(ui)`: 完整尊重系统「减少动态效果」偏好。
+  - Review / Critique：P1 旧 reduced-motion 规则写在同步 / 刷新动画声明之前，同权重规则会被后文覆盖，实际仍会动；
+    P2 悬浮窗吸附和淡出完全未纳入；P2 预算、峰谷、缓存、排行进度条及控件过渡也未纳入，系统偏好只被部分执行。
+    功能扫描继续暂停复杂业务功能，选择无业务扩张的全局交互可访问性修正。
+  - Act：把 reduced-motion 规则移到样式表末尾，并严格限定在 `.dsh-quota-root` 与 `.dq-balance`；偏好开启时
+    统一关闭根节点、子元素和伪元素的 animation / transition，同时恢复 `scroll-behavior:auto`，不影响 DSH 其他界面。
+  - Verify：37/37 单测、build、typecheck 全过；Playwright 模拟 `reduced-motion: reduce` 后实测悬浮窗、刷新按钮、
+    柱图和计价 disclosure 的 `transition-property` 均为 `none`，仪表盘 `scroll-behavior=auto`；正常中英文、余额键盘
+    明细、620px、缓存失败与悬浮窗回归全过，除故意注入的 1 条 HTTP 500 外 console error 0、pageerror 0。
 
 - （轮次 29）`fix(dashboard)`: 余额构成支持键盘与触屏。
   - Review / Critique：P1 `.dq-remaining` 是不可聚焦的 `div`，充值 / 赠送明细只靠 `:hover` 出现，键盘用户无法进入；

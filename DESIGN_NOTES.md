@@ -29,6 +29,8 @@
   绝不用空态文案冒充加载态。
 - 悬浮窗：拖动中关闭 transition（`.dsh-quota-dragging{transition:none}`），松手再吸附时开启，
   缓动统一 `cubic-bezier(.22,1,.36,1)`，时长 `.28s`。
+- 系统设置 `prefers-reduced-motion: reduce` 时，插件两个根节点内的动画、过渡与平滑滚动全部关闭；规则放在
+  样式表末尾并限定作用域，既避免被后续声明覆盖，也不影响 DSH 宿主界面。
 - 用户设置类状态（悬浮窗显示/位置/收起、阈值、预算）一律持久化到 localStorage，
   key 统一前缀 `dsh-usage-dashboard:`，并带 `:v<N>` 版本后缀便于演进。
 - 悬浮窗只用 `position:absolute` 挂在 `[data-shell-overlay]` 上，拖动边界排除侧边栏与会话头部。

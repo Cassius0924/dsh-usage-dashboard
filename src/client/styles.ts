@@ -251,7 +251,6 @@ export const css = `
 .dq-skel-bars{display:flex;align-items:flex-end;gap:2px;width:100%;height:120px;margin-top:10px}
 .dq-skel-bar{flex:1 1 0;min-width:0;border-radius:2px 2px 0 0}
 @keyframes dq-shimmer{0%{background-position:100% 50%}100%{background-position:0 50%}}
-@media (prefers-reduced-motion:reduce){.dq-skel{animation:none}.dq-refresh-icon--spin,.dq-sync--syncing .dq-sync-dot{animation:none}}
 .dq-status-row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:20px}
 .dq-status-messages{display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-width:0}
 .dq-status-row .dq-warn,.dq-status-row .dq-error{font-size:12px;line-height:1.45}
@@ -271,4 +270,10 @@ export const css = `
 .dq-refresh-icon{display:inline-block;line-height:1}
 .dq-refresh-icon--spin{animation:dq-spin .9s linear infinite}
 @keyframes dq-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){
+  .dsh-quota-root,.dsh-quota-root *,
+  .dsh-quota-root *::before,.dsh-quota-root *::after,
+  .dq-balance,.dq-balance *,
+  .dq-balance *::before,.dq-balance *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
 `
