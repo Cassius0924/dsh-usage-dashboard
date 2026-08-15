@@ -726,7 +726,7 @@ export function BalanceDashboard(): ReactElement {
             ) : (
               <Bars data={hourlyBars} height={100} labelEvery={3} />
             )}
-            <div className="dq-chart-title">近 12 周 · 每日用量热力图</div>
+            <div className="dq-chart-title">近一年 · 每日用量热力图</div>
             <Heatmap data={usage.heatmap} />
           </>
         ) : loadingUsage ? (

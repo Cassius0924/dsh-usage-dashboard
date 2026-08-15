@@ -263,8 +263,10 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     hourly.push({ hour: i, total: b.total, cost: b.cost, calls: b.calls })
   }
 
+  // 52 full weeks (364 days) rather than a calendar year, so the grid is
+  // always a whole number of week-columns and never carries an orphan day.
   const heatmap: UsageData['heatmap'] = []
-  for (let i = 83; i >= 0; i--) {
+  for (let i = 363; i >= 0; i--) {
     const d = new Date(Date.now() - i * 86_400_000)
     const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
     const b = dayMap.get(key) ?? emptyBucket()
