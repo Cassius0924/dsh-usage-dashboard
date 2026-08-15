@@ -64,9 +64,12 @@ export const css = `
 .dq-remaining-breakdown{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;flex-direction:column;gap:4px;padding:8px 10px;background:var(--dsw-alias-bg-overlay,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);white-space:nowrap;font-size:12px;font-weight:500;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-remaining:hover .dq-remaining-breakdown{display:flex}
 .dq-remaining-granted{color:var(--dsw-alias-label-tertiary,#59636e);font-weight:400;font-size:11px}
-.dq-period-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-@media (max-width:620px){.dq-period-grid{grid-template-columns:1fr}}
-.dq-period{background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.06));border-radius:10px;padding:12px 14px;min-width:0}
+.dq-period-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+.dq-period{min-width:0;padding:4px 16px}
+.dq-period:first-child{padding-left:0}
+.dq-period:last-child{padding-right:0}
+.dq-period+.dq-period{border-left:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
+@media (max-width:620px){.dq-period-grid{grid-template-columns:1fr}.dq-period,.dq-period:first-child,.dq-period:last-child{padding:12px 0}.dq-period:first-child{padding-top:2px}.dq-period+.dq-period{border-top:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));border-left:0}}
 .dq-period-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
 .dq-period-label{font-size:11px;color:var(--dsw-alias-label-tertiary,#59636e)}
 .dq-period-cost{font-size:22px;font-weight:680;letter-spacing:-.01em;color:var(--dsw-alias-label-primary,#1f2328);font-variant-numeric:tabular-nums;line-height:1.25}
