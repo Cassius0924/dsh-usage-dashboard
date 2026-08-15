@@ -5,9 +5,10 @@
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
 轮次 32 后用户进一步收拢方向：接下来优先做**界面排版设计优化**（信息层级、留白、栅格/对齐、窄屏重排），
 交互细节打磨降为次优先。轮次 34-36 已做完脑暴轮次 #7（真实截图+源码审计）里的全部 3 个 P1 排版候选（悬浮窗
-折叠态标题截断、余额数字视觉权重、卡片容器权重分级）；轮次 37 接着做完该轮次第一个 P2（卡片间距与卡内
-间距拉开疏密对比）。Judge 评分：交互 9.9 / 样式 9.4 / 功能 9.7。当前无 P0/P1；排版专项剩余 5 个 P2（窄屏
-用量统计断行、合并官方平台卡片、拆分 DSH 用量卡片、字号档位收敛、宽屏内容宽度评估），继续按优先级扫描。
+折叠态标题截断、余额数字视觉权重、卡片容器权重分级）；轮次 37、38 接着做完该轮次第一、二个 P2（卡片间距
+与卡内间距拉开疏密对比、窄屏用量统计 3+1 断行修复）。Judge 评分：交互 9.9 / 样式 9.4 / 功能 9.7。当前无
+P0/P1；排版专项剩余 4 个 P2（合并官方平台卡片、拆分 DSH 用量卡片、字号档位收敛、宽屏内容宽度评估），
+继续按优先级扫描。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -88,6 +89,85 @@
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 38）`style(dashboard)`: 窄屏用量统计 3+1 断行修复。
+  - Review / Critique：P2 「DSH 用量」卡片内`.dq-usage-totals`（近30天输入/输出/缓存命中/模型调用 4 个
+    `.dq-stat`）用 `display:flex;flex-wrap:wrap;gap:12px 24px` 加 `.dq-stat{min-width:110px}` 自动换行，
+    620px 视口下只能塞下前 3 个，第 4 个「模型调用」被挤到独立一行、左对齐、右侧留下一大片空白；全仓库
+    620px 媒体查询逐条核对后确认覆盖了 `.dq-period-grid`/`.dq-card-head`/`.dq-budget-head`/
+    `.dq-coverage-metrics`/`.dq-chart-block-head` 等选择器，唯独漏了 `.dq-usage-totals`，是断行空洞而非
+    设计意图。功能扫描继续遵循用户方向，只调这一处窄屏布局，不碰计价/统计口径，不改 4 个统计值内部的
+    标签/数值/颜色内容。
+  - Act：在 `.dq-usage-totals` 基线规则后紧跟新增 620px 媒体查询，改用可控的 2 列 2 行网格布局——
+    `display:grid;grid-template-columns:repeat(2,minmax(0,1fr))`，`gap` 沿用基线已有的 `12px 24px`
+    不新拍数值；同时把网格内 `.dq-stat` 的 `min-width` 从基线的 `110px` 覆盖为 `0`，避免子项固定最小宽度
+    在窄列（320px 下每列仅 83px）撑破网格轨道。方案直接复用轮次 21 已验证过的 `.dq-coverage-metrics`
+    620px 同款模式（`repeat(3)`→`repeat(2)` 的响应式降级 + `minmax(0,1fr)` 防溢出），不新发明布局语言。
+    桌面（>620px）完全不命中该媒体查询，`display:flex;flex-wrap:wrap` 与既有横向排列不受影响。
+  - Act（320/480/620px 三档窄屏用真实数据验证，非臆测）：Playwright 真实登录测得三档列宽分别为
+    83px/163px/233px（=（卡片内容宽度－24px 列间距）/2，卡片内容宽度按 `.dq-card--primary` 20px 内边距、
+    `max-width:calc(100vw-56px)` 逐级推算得出，与实测完全吻合）。中文标签（如「近 30 天输入」「缓存命中」）
+    三档均单行不换行；英文标签中最长的「Last 30 days input」（19 字符）在 480/620px 单行不换行，仅在
+    320px 下换成 2 行（该格高度 46px→62px，网格行高随内容自动增高），即使换行也不产生水平溢出或断行
+    空洞，属于内容自适应的可控降级，不需要为 320px 单独再降级成 1 列（1 列会让本就不拥挤的 620/480px
+    也失去 2 列节省的纵向空间，性价比更低）。**（措辞更正，见下方"修复 1"）**：这里的
+    `docScrollWidth===docClientWidth`「三档全部成立」当时只验证了标签 `.dq-stat-label` 换行和页面级
+    容器宽度，用的是当天恰好都很短的真实数据（236.0万/68.4万/1.6亿/642），没有单独拿长数值去测
+    `.dq-stat-value` 数字本身会不会断行——这是超出实际测试范围的表述，已被独立 Critic 用压力数据坐实
+    是漏洞，修复见下。
+  - Verify（自测）：42/42 单测、build、typecheck 全过（exit 0）。Playwright 真实登录后实测：620/480/320px
+    三档下 `.dq-usage-totals` 计算样式 `display:grid`、`grid-template-columns` 分别为 `233px 233px`/
+    `163px 163px`/`83px 83px`，4 个 `.dq-stat` 呈 2 行 2 列排布（第1、2项同一行，第3、4项同一行），不再
+    出现"3 个同行+第 4 个独占一行留空白"的现象；4 项标签（近 30 天输入/输出/缓存命中/模型调用）与数值
+    （236.0万/68.4万/1.6亿/642）内容与颜色均未变化。1440/1024px 桌面视口下 `.dq-usage-totals` 仍为
+    `display:flex`、单行横向排列，4 项左右紧邻无换行，与改动前一致。切到 English 后复测同样三档窄屏，
+    2 列网格结构不变，仅 320px 下首项标签换 2 行，`docScrollWidth===docClientWidth` 三档均成立，验证后
+    已切回中文（`/root/.dsh/settings.yaml` 的 `locale.preference` 确认已还原为 `zh`）。覆盖诊断 disclosure、
+    统计周期切换按钮、导出菜单、图表本身在本轮改动前后位置与交互均未受影响（改动只作用于
+    `.dq-usage-totals` 一个选择器及其子项 `.dq-stat` 的 `min-width`，未触碰其它选择器）。console error /
+    pageerror 未见异常。
+  - Act（修复 1，独立 Critic 用压力数据发现的 P1）：独立 Critic 实测指出，上面的验证只用了当天真实数据
+    （236.0万/68.4万/1.6亿/642），这组数字恰好都很短、不会在 `.dq-stat-value` 内部换行；但 `fmtCompact`
+    对更大的量级会产出形如 `9999.9万`/`1234.5亿` 这类"数字+CJK 单位字符"的字符串，30 天窗口对活跃账号
+    并不是夸张场景。CJK 表意文字前存在 UAX #14 隐式断行机会点，即使数字和单位之间没有空格，浏览器仍可能
+    在两者之间断行，320px 下 2 列网格每列只有 83px，实测量得该字符串在 18px/650 字重下宽度约 87.5px
+    （`node round38-measure2.mjs` 用真实字体渲染量得，非估算），略超 83px 列宽，触发换行——这是数值本身
+    被拆开的退化，与轮次 38 最初处理的"整行断行空洞"是两类不同的问题，Critic 指出的是新的真实缺口，
+    不是文档措辞问题。方案：① 给 `.dq-usage-totals .dq-stat-value` 加 `white-space:nowrap;overflow:
+    hidden;text-overflow:ellipsis` 作为所有断点通用的防线（数字永远不允许被拆成两行，超宽时优雅截断而
+    不是断行错位或撑破布局）；② 在既有的 `@media (max-width:620px)` 断点内（不新引入断点值）把
+    `.dq-usage-totals .dq-stat-value` 的 `font-size` 从基线 18px 收到 13px——13px 不是新拍的数值，
+    是复用 `.dq-card--primary .dq-card-title`、`.dq-coverage-metrics dd` 已经在用的字号档位。选择
+    "整个 ≤620px 统一收到 13px"而不是"只在 320px 单独再开一档更窄的媒体查询"：13px 下压力数值
+    在 320/480/620 三档列宽（83/163/233px）里都有充足余量（用真实渲染量得 63~72px，视样本而定），
+    没必要为了只服务 320px 而发明一个新的断点值，重复利用现有断点风险更小。未选浏览器另一种可能方案
+    "320px 单独降级为 1 列"——因为压力测试证明 2 列在 13px 字号下于 320px 完全站得住脚（数值不换行、
+    不溢出），不需要牺牲 620/480px 已经验证过的 2 列纵向空间收益。
+  - Verify（修复 1，压力数据复测）：用真实登录会话在浏览器里把 `.dq-usage-totals` 内 4 个
+    `.dq-stat-value` 的 `textContent` 临时替换为压力值 `9999.9万`/`1234.5亿`/`9999.9万`/`99,999`
+    （`round38-stress.mjs`，非当天巧合真实数据），在同一个已登录会话里从 1280px 依次收窄到
+    620/480/320px 实测：四档（含 1024/1440 桌面）每个 `.dq-stat-value` 的 `getClientRects().length`
+    均为 1（未换行）、`scrollWidth<=clientWidth`（未截断，13px 下压力值本身就没触发 ellipsis 兜底）、
+    `document.documentElement.scrollWidth===clientWidth` 全部成立；320/480/620px 三档 `.dq-usage-totals`
+    的 `grid-template-columns` 分别为 `83px 83px`/`163px 163px`/`233px 233px`，`font-size` 计算值均为
+    `13px`；1024/1440px 桌面 `display` 仍为 `flex`、`font-size` 仍为基线 `18px`，未受影响。截图
+    `/tmp/dsh-ui-audit/round38-stress-320.png`、`round38-stress-480.png`、`round38-full-620.png` 均可见
+    4 个压力值在各自列内单行完整显示、无断行无重叠。复测当天真实数据（未替换 textContent 的原始页面）：
+    320px 下四项值仍为 236.0万/68.4万/1.6亿/642、字号计算值同样是 13px（`round38-real.mjs`），与压力
+    测试用的是同一条 CSS 规则，确认基线场景不受影响。build/typecheck/单测三门 exit 0。
+  - **压力测试方法论说明**：本条使用的 `9999.9万`/`1234.5亿`/`99,999` 是构造的压力数据（直接改写已渲染
+    DOM 节点的 `textContent`），刻意选在真实 `fmtCompact`/`fmtInt` 输出格式的长度上限附近，不是当天
+    真实业务产生的数字；用它验证是因为当天真实数据（236.0万/68.4万/1.6亿/642）具有代表性但不具有
+    覆盖性——只测过一组巧合很短的真实数据、不能代表所有可能长度，这正是本轮 P1 的根源。
+  - 独立 Critic 复审（更极端压力值）：用自写脚本、更极端的构造值（如 `88,888,888万`）复测，320px 下确实
+    触发 13px 也放不下的 ellipsis 截断，但 `spillsPastCell`（是否侵入右侧相邻列）在全部档位均为
+    `false`，优雅降级为省略号而非重叠或撑破布局；480/620px 即使该极端值也不触发截断；桌面 1024/1440px
+    确认 `.dq-stat-value` 仍为基线 18px；三门复测 exit 0；确认本轮 P1 真正解决，无需再退回。
+  - 独立 QA：真实业务数据下 620/480/320px 三档 `grid-template-columns` 分别为 `233px 233px`/
+    `163px 163px`/`83px 83px`，均严格 2×2 排布（DOM `top` 坐标聚类确认，非 3+1）；1440/1024px 桌面仍
+    `display:flex`/18px 字号；五档视口 `document.scrollWidth===clientWidth` 全部成立；覆盖诊断
+    disclosure、统计周期切换、导出菜单、图表 hover tooltip 均实际点击验证正常（非仅选择器匹配）；
+    console error 2 条在裸登录页也复现（既有噪音），pageerror 0。截图：`/tmp/dsh-ui-audit/qa38-*.png`。
 
 - （轮次 37）`style(dashboard)`: 卡片间距与卡内间距拉开疏密对比。
   - Review / Critique：P2 `.dq-balance{gap:16px}`（卡片与卡片之间的间距）和 `.dq-card{padding:16px}`

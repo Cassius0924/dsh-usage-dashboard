@@ -202,6 +202,12 @@ export const css = `
 .dq-toggle input:focus-visible,.dq-model-item input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
 .dq-link:focus-visible,.dq-model-btn:focus-visible,.dq-chart-switch-btn:focus-visible,.dq-export-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
 .dq-usage-totals{display:flex;flex-wrap:wrap;gap:12px 24px;margin-bottom:16px}
+/* value itself (number+unit, e.g. "9999.9万") must never break across lines inside its own column —
+   nowrap+ellipsis is a defensive floor for all widths; the actual fix for the realistic 320px 2-col
+   case is the font-size drop below, which keeps every measured stress value comfortably under the
+   83px column width without ever hitting the ellipsis fallback (see round 38 PROGRESS entry) */
+.dq-usage-totals .dq-stat-value{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:620px){.dq-usage-totals{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 24px}.dq-usage-totals .dq-stat{min-width:0}.dq-usage-totals .dq-stat-value{font-size:13px}}
 .dq-chart-peak{margin-left:10px;font-size:11px;font-weight:400;color:var(--dsw-alias-label-tertiary,#59636e);font-variant-numeric:tabular-nums}
 .dq-chart-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-secondary,#59636e);margin:16px 0 8px}
 .dq-chart-title:first-of-type{margin-top:0}
