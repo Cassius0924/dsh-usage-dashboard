@@ -57,7 +57,8 @@
   ],
   "scripts": {
     "build": "node build.mjs",
-    "typecheck": "tsc --noEmit",
+    "test": "node test/run.mjs",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "prepare": "node build.mjs"
   },
   "license": "MIT",

@@ -152,6 +152,7 @@ DeepSeek 再调价时，只改这张表。
 
 ```sh
 pnpm install
+pnpm test           # Node 内置测试运行器：计价、缓存、信任围栏与用量聚合
 pnpm run build      # esbuild 出 lib/index.js（host）+ lib/client.js（client），再 tsc 出类型
 pnpm run typecheck
 ```

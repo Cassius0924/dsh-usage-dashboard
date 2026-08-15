@@ -156,7 +156,7 @@ function addUsageEvent(events: SessionEventFace[] | undefined, onEvent: (time: n
   }
 }
 
-export async function fetchUsage(persistence: SessionPersistenceFace | undefined): Promise<UsageResponse> {
+export async function fetchUsage(persistence: SessionPersistenceFace | undefined, nowMs = Date.now()): Promise<UsageResponse> {
   if (persistence === undefined) return { ok: false, error: '会话持久化服务不可用' }
   let headers: Array<{ id?: string; sessionId?: string }>
   try {
@@ -251,7 +251,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
 
   const daily: UsageData['daily'] = []
   for (let i = 29; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86_400_000)
+    const d = new Date(nowMs - i * 86_400_000)
     const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
     const b = dayMap.get(key) ?? emptyBucket()
     daily.push({ date: key, input: b.input, output: b.output, cache: b.cache, total: b.total, cost: b.cost, calls: b.calls })
@@ -265,7 +265,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
 
   const heatmap: UsageData['heatmap'] = []
   for (let i = 83; i >= 0; i--) {
-    const d = new Date(Date.now() - i * 86_400_000)
+    const d = new Date(nowMs - i * 86_400_000)
     const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
     const b = dayMap.get(key) ?? emptyBucket()
     heatmap.push({ date: key, total: b.total, cost: b.cost, calls: b.calls })
@@ -280,7 +280,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     const hours = modelHours.get(modelKey)
     const daily: ModelSeriesPoint[] = []
     for (let i = 29; i >= 0; i--) {
-      const d = new Date(Date.now() - i * 86_400_000)
+      const d = new Date(nowMs - i * 86_400_000)
       const key = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
       const b = days?.get(key) ?? emptyBucket()
       daily.push({ total: b.total, cost: b.cost, calls: b.calls })
@@ -312,8 +312,8 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       hourly,
       heatmap,
       models,
-      summary: summarize(dayMap, new Date()),
-      pricing: pricingInfo(Date.now()),
+      summary: summarize(dayMap, new Date(nowMs)),
+      pricing: pricingInfo(nowMs),
       peakSplit,
       sessions: [...sessions].sort((a, b) => b.cost - a.cost).slice(0, SESSION_TOP_N),
       sessionCount: sessions.length,
