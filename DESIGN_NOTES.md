@@ -11,6 +11,23 @@
   额外的「主卡片」权重是在此基线上的加法修饰，不是另开一套规范。
 - 数字一律 `font-variant-numeric: tabular-nums`，避免刷新时抖动。
 - 类名前缀：悬浮窗 `dsh-quota-*`，仪表盘 `dq-*`。全部样式集中在 `src/client/styles.ts` 一张表里。
+- **小字号两档体系（轮次 41 收敛）**：全站小字号曾经在 11-12.5px 区间里塞了 11/11.5/12/12.5px 四个值，
+  0.5px 步进会被浏览器亚像素渲染抹平，"数值上分四层、视觉上只有一层"，只留下维护负担。现收敛为两档
+  整数像素、间隔完整 1px：**11px＝"微标签"**——用户一眼扫过而不逐字读的短内容（dt 风格的统计/周期标签、
+  徽章、状态胶囊、占比数字、极简标签），如 `.dq-stat-label`、`.dq-period-label`、`.dq-delta`、
+  `.dq-pricing-now`、`.dq-coverage-status`、`.dq-rank-share`；**12px＝"次要正文"**——需要被完整阅读的
+  说明性文字，涵盖小节标题（`.dq-card-title`、`.dq-budget-title`、`.dq-chart-title`）、按钮/分段控件
+  文本（`.dq-export-btn`、`.dq-model-btn`、`.dq-chart-switch-btn`、`.dq-window-btn`——同为"分段控件/
+  过滤按钮"家族，统一到一档后不再各写各的数值）、legend/hint/footnote/table 类说明文本
+  （`.dq-setting-hint`、`.dq-toggle-hint`、`.dq-coverage-brief`、`.dq-pricing-table` 等），以及告警/
+  空态整句（`.dq-alert`、`.dq-empty`）。两档内部仍靠 `font-weight`/取色区分标题与正文（如 12px 标题
+  600 权重、正文多为 400-500），字号本身不再承担"标题比正文小 0.5px"这种不可辨识的职责。**这个区间以后
+  新增样式时不要再引入 11.5/12.5 这类中间值**；如果确实需要和这两档拉开辨识度，去复用已经建立的其它
+  独立档位（10px 图标/箭头类字符、13px 起的 hero 邻近文本），不要在 11-12.5px 内再开新档。这两档之外
+  的字号各自有明确、独立的语义理由，不属于这次合并范围：`.dq-card--primary .dq-card-title` 13px/700
+  （轮次 36，主/次卡片权重）、`.dsh-quota-collapsed-total` 15px（轮次 34，悬浮窗折叠总额）、
+  `.dq-usage-totals .dq-stat-value` 在 620px 媒体查询内的 13px（轮次 38，防止压力数据换行）、
+  `.dq-remaining`/`.dq-period-cost` 22px（轮次 35，hero 数字）。
 
 ## 信息层级（仪表盘）
 
