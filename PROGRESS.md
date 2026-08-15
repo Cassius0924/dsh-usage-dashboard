@@ -5,10 +5,10 @@
 中英文 i18n 已完成；按用户方向暂停扩张复杂业务功能，当前集中做 UI 设计美化、交互优化和用户体验提升。
 轮次 32 后用户进一步收拢方向：接下来优先做**界面排版设计优化**（信息层级、留白、栅格/对齐、窄屏重排），
 交互细节打磨降为次优先。轮次 34-36 已做完脑暴轮次 #7（真实截图+源码审计）里的全部 3 个 P1 排版候选（悬浮窗
-折叠态标题截断、余额数字视觉权重、卡片容器权重分级）；轮次 37、38 接着做完该轮次第一、二个 P2（卡片间距
-与卡内间距拉开疏密对比、窄屏用量统计 3+1 断行修复）。Judge 评分：交互 9.9 / 样式 9.4 / 功能 9.7。当前无
-P0/P1；排版专项剩余 4 个 P2（合并官方平台卡片、拆分 DSH 用量卡片、字号档位收敛、宽屏内容宽度评估），
-继续按优先级扫描。
+折叠态标题截断、余额数字视觉权重、卡片容器权重分级）；轮次 37-39 接着做完该轮次第一、二、三个 P2（卡片间距
+与卡内间距拉开疏密对比、窄屏用量统计 3+1 断行修复、合并官方平台卡片，卡片总数从 9 降到 8）。Judge 评分：
+交互 9.9 / 样式 9.4 / 功能 9.7。当前无 P0/P1；排版专项剩余 3 个 P2（拆分 DSH 用量卡片、字号档位收敛、
+宽屏内容宽度评估），继续按优先级扫描。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -89,6 +89,76 @@ P0/P1；排版专项剩余 4 个 P2（合并官方平台卡片、拆分 DSH 用�
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 39）`style(dashboard)`: 合并官方平台卡片。
+  - Review / Critique：P2 「官方平台」卡只放 3 个链接按钮，高度约 99.5px、全站最矮，却背着和信息密集
+    卡片同规格的边框 + 标题 + 16px 内边距。轮次 36 给卡片建立主/次视觉权重分级后，「官方平台」和「设置」
+    是仅存的两张不参与分级的导航/配置类卡片，「官方平台」本身信息量太少，独占一整张卡片位不划算。审计
+    原文建议并入「设置」卡（轮次 13 已把「官方平台」下沉到导航区、紧邻「设置」，两者本就是同一信息层级）。
+  - Act：把「官方平台」卡的 3 个链接（`t('links.usage')` 查看额度/用量、`t('links.apiKey')` 生成 API Key、
+    `t('links.status')` 服务状态）整体搬进「设置」卡（`src/client/dashboard.tsx` 1242-1298 行），卡标题
+    仍是 `t('settings.title')`；在标题正下方新增一个 `.dq-links-title` 小节标题渲染原 `t('links.title')`
+    （"官方平台"/"DeepSeek Platform"），复用 `.dq-budget-title`/`.dq-coverage-title` 已定的
+    `12px/600/label-primary` 字号字重取色组合，不新开档位。链接区与后面的悬浮窗开关/余额预警线/月度预算
+    之间的视觉分隔，直接在只用了一次的 `.dq-toggle` 选择器上追加 `margin-top:14px;padding-top:14px;
+    border-top:1px solid --dsw-alias-border-l1`——与卡内既有的 `.dq-setting`/`.dq-budget`/`.dq-pricing`/
+    `.dq-coverage` 是同一套 14px/border-top 分节手法，不新建包裹 div、不发明新的分隔语言。`.dq-links`/
+    `.dq-link` 样式本就与卡片解耦（未被 `.dq-card` 限定），原样复用。同步更新 `styles.ts` 里轮次 36 那条
+    "官方平台/设置都不加 primary 修饰类"的注释与 `DESIGN_NOTES.md` 对应段落，避免文档描述与代码结构脱节。
+    未新增/删除任何翻译键（`links.*`、`settings.*` 中英文键值原样保留，只是渲染位置从独立卡片挪到「设置」
+    卡内部），未触碰计价/统计口径，不涉及 `src/index.ts` 等 host 端代码。
+  - Verify（自测）：`pnpm run build` / `pnpm run typecheck` / `node test/run.mjs`（42/42）均 exit 0。
+    Playwright 真实登录（1440px 桌面）实测：`.dq-balance` 下卡片容器数从 9 降到 8，卡片标题顺序为
+    账户余额→消耗概览（费用为估算）→DSH 用量（tokens）→高峰/闲时分布→缓存命中与节省→模型成本排行·近30天→
+    会话成本排行·近30天→设置，「官方平台」不再作为独立卡片标题出现；「设置」卡内部 DOM 结构确认
+    `.dq-links` 的最近 `.dq-card` 祖先标题正是「设置」，`.dq-links-title` 文本为「官方平台」，3 个
+    `a.dq-link` 的 `href`/文案与合并前完全一致（`usage`/`api_keys`/`status` 三个官方 URL 未变）；
+    `.dq-toggle` 计算样式 `border-top-width:1px;border-top-style:solid`，链接区与设置区之间可见分隔。
+    键盘可达性：从页面顶部用真实 `Tab` 键连续按键（非编程 `.focus()`）到达第一个 `.dq-link`，
+    `element.matches(':focus-visible')===true` 且计算样式 `outline: 2px solid rgb(65, 118, 230)`，
+    与全站既有焦点环规则一致，未被合并破坏。窄屏无新增溢出：620/480/320px 三档 `document.documentElement.
+    scrollWidth === clientWidth` 全部成立。console error/pageerror 除页面加载早期一条与本次改动无关的
+    `401 Unauthorized`（登录跳转前的探测请求，改动前同样存在）外无异常。中英文 i18n：`i18n.test.ts`
+    （中英文词典键集合完全一致、英文词典无残留中文、占位符集合一致）在本轮改动后仍 42/42 通过；
+    `links.title`/`links.usage`/`links.apiKey`/`links.status`/`settings.*` 中英文条目在
+    `src/client/locales.ts` 内逐一核对仍然完整成对存在，未丢失任何键。
+  - **修复轮 1（独立 Critic P1：英文验证方法错误 + "权限限制"说法不成立）**：Critic 指出上面"待独立 QA
+    验证英文界面"那句话是错的——本轮验证英文从来不需要、也从没直接编辑过 `/root/.dsh/settings.yaml`，
+    轮次 34/38 的真实做法是走 **DSH Settings UI 里的 Language 菜单做真实点击切换**，事后才读一次
+    `settings.yaml` 确认生效/还原；而且该文件对当前 root 会话本就可写，"权限限制"是这一轮编造的借口，
+    不是真实遇到的阻碍。改正做法：用 Playwright 真实登录 DSH（`/tmp/dsh-round39-en.mjs`），打开会话→切到
+    「额度」tab（`.dq-balance` 可见）→点击侧栏 `[data-slot="settings.trigger"]` 打开 Settings 弹层→点
+    Language 下拉→选 `English`（与轮次 34/38 完全同一套手法，唯一区别是本轮改动后页面里「设置」卡标题
+    `.dq-card-title` 文本恰好也是「设置」/`Settings`，若沿用旧脚本 `getByText(/设置|Settings/).last()`
+    会在切到用量 tab 之后误选中卡片标题而不是侧栏按钮——这是本轮排查中发现的新脆弱点，已改用侧栏按钮上
+    稳定的 `data-slot="settings.trigger"` 属性定位，不再依赖可能重名的文案匹配）。验证结果（1440 桌面 +
+    620 窄屏两档，`/tmp/dsh-ui-audit/round39-en-1440-card.png`、`round39-en-620-card.png`、
+    `round39-en-1440-full.png`、`round39-en-620-full.png`）：合并后的「设置」卡英文态下 `.dq-card-title`
+    显示「Settings」、`.dq-links-title` 显示「Quick Links」（见下方"修复轮 1（P2）"重命名说明），两行
+    分别单行不换行（`getClientRects().length===1`）、纵向不重叠（`.dq-links-title` 的 `boundingBox().y`
+    严格大于 `.dq-card-title` 底边）；3 个链接英文文案「View balance / usage」「Create API key」
+    「Service status」正常显示，`elementFromPoint` 在每个链接中心点命中的元素都属于 `.dq-link`（真实可
+    点击，非仅选择器存在）；`.dq-toggle` 计算样式 `border-top-width:1px;border-top-style:solid`，分隔线
+    在英文文案下依然正常分隔链接区和设置控件区；1440px 与 620px 两档 `document.documentElement.scrollWidth
+    > clientWidth` 均为 `false`（无横向溢出）；console error/pageerror 均为空数组。验证完成后已切回中文：
+    脚本末尾在同一个已登录会话里再次走 Settings→Language→「中文」的真实点击（菜单项标签是「中文」不是
+    「简体中文」——这是排查中修正的另一个脚本笔误，`/tmp/dsh-restore-zh.mjs` 一直是对的，只是本轮最初照抄
+    另一份旧脚本时抄错了），随后读取 `/root/.dsh/settings.yaml` 确认 `locale.preference: zh`，会话结束时
+    再次核对确认为 `zh`（过程中一度因脚本笔误被短暂遗留在英文态，已第一时间用 `dsh-restore-zh.mjs` 修复，
+    未遗留给下一轮）。
+  - **修复轮 1（顺带处理的两个 P2）**：① `links.title` 从「官方平台」/`DeepSeek Platform` 改名为
+    「快捷入口」/`Quick Links`（`src/client/locales.ts` 中英文各一处，未新增/删除键），去掉「设置」卡内
+    突然出现外部品牌名的语义跳跃感，读起来是"设置卡自己的一个导航子区"而非另一件事；DOM 结构、
+    `.dq-links-title` 样式、3 个链接的 `href`/文案均未变，`styles.ts`/`DESIGN_NOTES.md` 里引用旧字符串的
+    说明性注释同步更新。② 更正 `DESIGN_NOTES.md` 里"复用 `.dq-budget-title`/`.dq-coverage-title` 已定
+    字号字重取色组合"这句话——`.dq-links-title` 只复用了这两个选择器共有的 `font-size`/`font-weight`/
+    `color` 三个属性值，自己还额外加了一条这两者都没有的 `margin:0 0 8px`（用于和下方链接行拉开间距），
+    原表述把"三属性同值复用"说成了"组合完全复用"，略有夸大，已在 `DESIGN_NOTES.md` 对应段落追加澄清。
+    重命名后重新跑了一遍完整流程（`pnpm run build` → 中英文两态 Playwright 实测 → 切回中文核对）确认改动
+    未引入新问题，中文态 `.dq-links-title` 显示「快捷入口」（`/tmp/dsh-ui-audit/round39-zh-1440-card.png`、
+    `round39-zh-620-card.png`），英文态显示「Quick Links」，与上面的截图一致。
+  - Verify（修复轮 1，收尾三门）：`pnpm run build` / `pnpm run typecheck` / `node test/run.mjs`（42/42）
+    均 exit 0（重命名 `links.title` 后重新跑过一遍，非改名前的旧结果）。
 
 - （轮次 38）`style(dashboard)`: 窄屏用量统计 3+1 断行修复。
   - Review / Critique：P2 「DSH 用量」卡片内`.dq-usage-totals`（近30天输入/输出/缓存命中/模型调用 4 个

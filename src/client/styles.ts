@@ -45,7 +45,7 @@ export const css = `
 /* 主卡片（余额/消耗概览/DSH 用量）视觉权重高于次级分析卡片与导航类卡片：只调排版属性——内边距、
    标题字号字重与取色、边框深浅——不引入新配色体系。两条规则与上面的基础规则同为单类选择器且源码顺序
    更靠后，天然覆盖，不需要 !important。次级分析卡片（高峰闲时/缓存命中/模型排行/会话排行）与导航类
-   卡片（官方平台/设置）都不加这个修饰类，维持原有 .dq-card 基线，形成两档权重。 */
+   卡片（设置，含轮次 39 并入的官方平台链接）都不加这个修饰类，维持原有 .dq-card 基线，形成两档权重。 */
 .dq-card--primary{padding:20px;border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.12))}
 .dq-card--primary .dq-card-title{font-size:13px;font-weight:700;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-window-switch{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.08))}
@@ -193,10 +193,16 @@ export const css = `
 .dq-setting-hint{font-size:11.5px;color:var(--dsw-alias-label-secondary,#59636e);line-height:1.5}
 .dq-number{width:82px;padding:5px 8px;font-size:13px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.16));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#1f2328);font-variant-numeric:tabular-nums}
 .dq-number:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:1px;border-color:transparent}
+.dq-links-title{font-size:12px;font-weight:600;color:var(--dsw-alias-label-primary,#1f2328);margin:0 0 8px}
 .dq-links{display:flex;flex-wrap:wrap;gap:8px}
 .dq-link{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:8px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-state-business-primary,#0969da);text-decoration:none;font-size:13px;font-weight:500;cursor:pointer}
 .dq-link:hover{border-color:var(--dsw-alias-state-business-primary,#0969da);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.04))}
-.dq-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px}
+/* .dq-toggle is the first settings control after the links row (轮次 39 merge) — its own
+   border-top separates the "快捷入口" links (originally the standalone 官方平台 card, renamed
+   in 轮次 39 fix-round-1 to read as part of 设置's own navigation area) from 设置 controls
+   inside the merged card, same 14px/14px/border-l1 recipe as .dq-setting so the two
+   sub-sections read at equal weight. */
+.dq-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;margin-top:14px;padding-top:14px;border-top:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
 .dq-toggle input{width:16px;height:16px;accent-color:var(--dsw-alias-state-business-primary,#0969da);cursor:pointer}
 .dq-toggle-hint{margin:5px 0 0 26px;font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-secondary,#59636e)}
 .dq-toggle input:focus-visible,.dq-model-item input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}

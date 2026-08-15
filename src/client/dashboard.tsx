@@ -1240,16 +1240,13 @@ export function BalanceDashboard(): ReactElement {
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">{t('links.title')}</div>
+        <div className="dq-card-title">{t('settings.title')}</div>
+        <div className="dq-links-title">{t('links.title')}</div>
         <div className="dq-links">
           <Link href="https://platform.deepseek.com/usage">{t('links.usage')}</Link>
           <Link href="https://platform.deepseek.com/api_keys">{t('links.apiKey')}</Link>
           <Link href="https://status.deepseek.com">{t('links.status')}</Link>
         </div>
-      </div>
-
-      <div className="dq-card">
-        <div className="dq-card-title">{t('settings.title')}</div>
         <label className="dq-toggle">
           <input type="checkbox" checked={widgetOn} onChange={toggle} />
           <span>{t('settings.widget')}</span>
