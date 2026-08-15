@@ -141,6 +141,18 @@ export interface PeakSplit {
   offPeakEraCost: number
 }
 
+/** One session's share of the bill. */
+export interface SessionCost {
+  id: string
+  /** The session's title from its log; falls back to a short id. */
+  title: string
+  total: number
+  cost: number
+  calls: number
+  /** Epoch ms of the last usage record in this session. */
+  lastActive: number
+}
+
 export interface UsageData {
   daily: DailyUsage[]
   hourly: HourlyUsage[]
@@ -150,6 +162,10 @@ export interface UsageData {
   summary: UsageSummary
   pricing: PricingInfo
   peakSplit: PeakSplit
+  /** Most expensive sessions first, capped — see SESSION_TOP_N. */
+  sessions: SessionCost[]
+  /** How many sessions contributed usage in total. */
+  sessionCount: number
 }
 
 export interface UsageResponse {

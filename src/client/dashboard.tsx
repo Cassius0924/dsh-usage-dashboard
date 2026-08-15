@@ -8,7 +8,7 @@
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react'
 import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage } from './api.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
-import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, UsageData } from '../contract.ts'
+import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageData } from '../contract.ts'
 import { lowBalanceStore, widgetVisibleStore } from './store.ts'
 
 /** One shimmering placeholder block, sized by the caller. */
@@ -264,6 +264,51 @@ function PeakCard(props: { split: PeakSplit; pricing: PricingInfo; currentCost: 
           : `新价 ${pricing.switchDate} 00:00 生效；上面两个数字是按你已有的全部用量重算的。`}
       </p>
     </div>
+  )
+}
+
+/** Coarse "how long ago", enough to tell a live session from last week's. */
+function agoText(ms: number): string {
+  const minutes = Math.floor((Date.now() - ms) / 60_000)
+  if (minutes < 1) return '刚刚'
+  if (minutes < 60) return `${minutes} 分钟前`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours} 小时前`
+  return `${Math.floor(hours / 24)} 天前`
+}
+
+/**
+ * Which sessions burned the money. Per-model and per-day views say what and
+ * when; this says *which run*, which is the one an agent user can act on —
+ * a single expensive session is a prompt or a loop worth looking at.
+ */
+function SessionRanking(props: { sessions: SessionCost[]; count: number; totalCost: number }): ReactElement {
+  const { sessions, count, totalCost } = props
+  if (sessions.length === 0) return <div className="dq-empty">还没有产生费用的会话。</div>
+  const top = sessions[0].cost
+  return (
+    <>
+      <ol className="dq-sessions">
+        {sessions.map(s => (
+          <li key={s.id} className="dq-session">
+            <div className="dq-session-head">
+              <span className="dq-session-title" title={`${s.title}\n${s.id}`}>{s.title}</span>
+              <span className="dq-session-cost">¥ {fmt(s.cost)}</span>
+            </div>
+            <div className="dq-session-track">
+              <div className="dq-session-fill" style={{ width: `${Math.max((s.cost / (top || 1)) * 100, 1.5)}%` }} />
+            </div>
+            <div className="dq-session-sub">
+              {fmtCompact(s.total)} tokens · {fmtInt(s.calls)} 次调用 · {agoText(s.lastActive)}
+              {totalCost > 0 && <> · 占 {((s.cost / totalCost) * 100).toFixed(1)}%</>}
+            </div>
+          </li>
+        ))}
+      </ol>
+      {count > sessions.length && (
+        <p className="dq-session-foot">共 {fmtInt(count)} 个会话有用量，上面是最贵的 {sessions.length} 个。</p>
+      )}
+    </>
   )
 }
 
@@ -736,6 +781,25 @@ export function BalanceDashboard(): ReactElement {
           </div>
         ) : (
           <div className="dq-empty">还没有可归类的模型用量。</div>
+        )}
+      </div>
+
+      <div className="dq-card">
+        <div className="dq-card-title">会话成本排行</div>
+        {usage !== null ? (
+          <SessionRanking sessions={usage.sessions} count={usage.sessionCount} totalCost={usage.totals.cost} />
+        ) : loadingUsage ? (
+          <div className="dq-sessions">
+            {[0, 1, 2].map(i => (
+              <div key={i} className="dq-session">
+                <Skel w={200} h={13} />
+                <div className="dq-session-track" />
+                <Skel w={250} h={11} />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dq-empty">还没有产生费用的会话。</div>
         )}
       </div>
 

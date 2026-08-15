@@ -6,7 +6,7 @@
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, UsageData, UsageResponse, UsageSummary } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageData, UsageResponse, UsageSummary } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra, isPeak, pricingInfo } from './pricing.ts'
 
@@ -71,6 +71,26 @@ interface Bucket {
 }
 
 const emptyBucket = (): Bucket => ({ input: 0, output: 0, cache: 0, total: 0, cost: 0, calls: 0 })
+
+/** How many sessions the ranking keeps; the rest are summarised by count. */
+const SESSION_TOP_N = 6
+
+/**
+ * The session's own title, folded from its log: `session/title` events are
+ * append-only and the last one wins. It rides along with the usage replay, so
+ * naming a session costs no extra read.
+ */
+function titleOf(events: SessionEventFace[] | undefined, id: string): string {
+  let title = ''
+  if (events !== undefined) {
+    for (const ev of events) {
+      if (ev?.type !== 'session/title') continue
+      const next = ev.data?.title
+      if (typeof next === 'string' && next !== '') title = next
+    }
+  }
+  return title !== '' ? title : `会话 ${id.slice(0, 8)}`
+}
 
 const dayKeyOf = (d: Date): string => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
 
@@ -151,6 +171,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
   const modelTotals = new Map<string, Bucket>()
   const modelDays = new Map<string, Map<string, Bucket>>()
   const modelHours = new Map<string, Map<string, Bucket>>()
+  const sessions: SessionCost[] = []
   // Peak / off-peak split, plus the same usage re-priced under the new table.
   const peakSplit: PeakSplit = {
     peak: { total: 0, cost: 0, calls: 0 },
@@ -178,6 +199,7 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     if (sid === undefined || sid === '') continue
     try {
       const { events } = await persistence.readFrom(sid, 0)
+      const session: SessionCost = { id: sid, title: '', total: 0, cost: 0, calls: 0, lastActive: 0 }
       addUsageEvent(events, (time, input, output, cache, reasoning, provider, model) => {
         const d = new Date(time)
         const dayKey = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
@@ -206,6 +228,10 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         overall.total += input + output + cache
         overall.cost += cost
         overall.cacheSavings += cacheSavingOf(time, model, cache)
+        session.total += input + output + cache
+        session.cost += cost
+        session.calls += 1
+        if (time > session.lastActive) session.lastActive = time
         const window = isPeak(time) ? peakSplit.peak : peakSplit.offPeak
         window.total += input + output + cache
         window.cost += cost
@@ -214,6 +240,10 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         peakSplit.offPeakEraCost += costUnderPeakEra(time, model, input, cache, output, true)
         overall.calls += 1
       })
+      if (session.calls > 0) {
+        session.title = titleOf(events, sid)
+        sessions.push(session)
+      }
     } catch {
       // One broken session log must not sink the whole dashboard.
     }
@@ -285,6 +315,8 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
       summary: summarize(dayMap, new Date()),
       pricing: pricingInfo(Date.now()),
       peakSplit,
+      sessions: [...sessions].sort((a, b) => b.cost - a.cost).slice(0, SESSION_TOP_N),
+      sessionCount: sessions.length,
       totals: {
         input: overall.input,
         output: overall.output,

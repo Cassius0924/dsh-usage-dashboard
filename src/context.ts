@@ -43,6 +43,8 @@ export interface SessionEventFace {
   data?: {
     usage?: TokenUsageFace
     header?: { config?: { provider?: string; model?: string } }
+    /** Payload of a `session/title` event. */
+    title?: string
   }
 }
 
