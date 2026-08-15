@@ -3,6 +3,7 @@
  * (`shell.overlay`) and the 「额度」 view tab (`conversation.view`).
  * Data arrives through the package's own host API via same-origin fetch.
  */
+import { ErrorBoundary } from './boundary.tsx'
 import type { ClientContext } from './context.ts'
 import { BalanceDashboard } from './dashboard.tsx'
 import { css } from './styles.ts'
@@ -30,11 +31,11 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register(
     { name: 'shell.overlay', id: 'deepseek-quota', order: 1000, label: 'DeepSeek 额度' },
-    () => <QuotaWidget />,
+    () => <ErrorBoundary silent><QuotaWidget /></ErrorBoundary>,
   ))
 
   ctx.slots.inject('conversation.view', () => ctx.slots.register(
     { name: 'conversation.view', id: 'balance', order: 20, label: '额度' },
-    () => <BalanceDashboard />,
+    () => <ErrorBoundary><BalanceDashboard /></ErrorBoundary>,
   ))
 }

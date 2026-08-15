@@ -182,6 +182,7 @@ export const css = `
 .dq-muted{color:var(--dsw-alias-label-secondary,#59636e)}
 .dq-error{color:var(--dsw-alias-state-error-primary,#cf222e)}
 .dq-warn{color:var(--dsw-alias-state-warning-primary,#9a6700)}
+.dq-crash{margin:10px 0 14px;padding:10px 12px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.10));border-radius:8px;font-size:11.5px;line-height:1.5;color:var(--dsw-alias-state-error-primary,#cf222e);white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .dq-empty{color:var(--dsw-alias-label-secondary,#59636e);font-size:12.5px;line-height:1.6;padding:6px 0}
 .dq-skel{background:linear-gradient(90deg,rgba(125,135,155,.10) 25%,rgba(125,135,155,.20) 37%,rgba(125,135,155,.10) 63%);background-size:400% 100%;border-radius:5px;animation:dq-shimmer 1.5s ease-in-out infinite}
 .dq-stat .dq-skel+.dq-skel{margin-top:6px}

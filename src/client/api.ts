@@ -20,8 +20,31 @@ async function getJson<T>(path: string, cache: RequestCache): Promise<T> {
   return res.json() as Promise<T>
 }
 
-const balanceCache = createCache<BalanceResponse>(BALANCE_TTL_MS, 'dsh-usage-dashboard:balance')
-const usageCache = createCache<UsageResponse>(USAGE_TTL_MS, 'dsh-usage-dashboard:usage')
+/**
+ * Every field the UI dereferences off a cached payload. A persisted entry that
+ * predates one of them would otherwise be rendered as if it were current and
+ * take the whole view down; listing them here keeps that failure impossible
+ * instead of merely unlikely. Add a line whenever the UI starts reading a new
+ * top-level field.
+ */
+const usageIsUsable = (res: UsageResponse): boolean => {
+  if (res.ok !== true) return false
+  const data = res.data
+  return data !== undefined
+    && Array.isArray(data.daily) && Array.isArray(data.hourly) && Array.isArray(data.heatmap)
+    && Array.isArray(data.models) && Array.isArray(data.sessions)
+    && typeof data.sessionCount === 'number'
+    && data.totals !== undefined && typeof data.totals.cacheSavings === 'number'
+    && data.summary?.today !== undefined
+    && Array.isArray(data.pricing?.tiers)
+    && data.peakSplit?.peak !== undefined
+}
+
+const balanceIsUsable = (res: BalanceResponse): boolean =>
+  res.ok === true && Array.isArray(res.data?.balances)
+
+const balanceCache = createCache<BalanceResponse>(BALANCE_TTL_MS, 'dsh-usage-dashboard:balance', balanceIsUsable)
+const usageCache = createCache<UsageResponse>(USAGE_TTL_MS, 'dsh-usage-dashboard:usage', usageIsUsable)
 
 /** Last cached value (possibly stale), for an instant first render. */
 export const getCachedBalance = (): BalanceResponse | null => balanceCache.get()?.data ?? null
