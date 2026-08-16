@@ -582,14 +582,63 @@ function agoText(ms: number, t: Translate): string {
   return t('common.daysAgo', { count: Math.floor(hours / 24) })
 }
 
+/** Per-row fetch state for the ranking's on-demand expand — mirrors the
+ *  three-way {loading, error, data} shape `loadSessionUsage` already uses
+ *  for the current-session card, just keyed per row instead of per tab. */
+interface SessionDetailState {
+  error: string | null
+  data: SessionUsageData | null
+}
+
+/** Body of one expanded ranking row: same loading/error/data three-way as the
+ *  current-session card, and the same `SessionUsageCard` rendering the data —
+ *  this is deliberately not a second implementation of that layout. */
+function SessionDetail(props: { state: SessionDetailState | undefined }): ReactElement {
+  const { t } = useI18n()
+  const { state } = props
+  if (state === undefined) return <SessionUsageSkeleton />
+  if (state.data !== null) return <SessionUsageCard data={state.data} />
+  if (state.error !== null) return <div className="dq-empty dq-empty--error">{localizeApiError(state.error, t, 'error.query')}</div>
+  return <SessionUsageSkeleton />
+}
+
 /**
  * Which sessions burned the money. Per-model and per-day views say what and
  * when; this says *which run*, which is the one an agent user can act on —
  * a single expensive session is a prompt or a loop worth looking at.
+ *
+ * Each row is a native `<details>` (same disclosure grammar as `.dq-pricing`/
+ * `.dq-coverage` above — no custom open/close state machine, keyboard and
+ * touch come for free). Opening a row for the first time fires an on-demand
+ * `fetchSessionUsage(s.id)` and renders the result with the exact same
+ * `SessionUsageCard` the 「当前会话消耗」card uses — the row only has the
+ * summary fields (`SessionCost`), the full per-model breakdown only exists
+ * once that fetch lands. `startedRef` guards against re-fetching on a
+ * collapse/re-expand: once a row's fetch has been kicked off, later toggles
+ * just show whatever is already cached in `details`.
  */
 function SessionRanking(props: { sessions: SessionCost[]; count: number; totalCost: number }): ReactElement {
   const { t, locale } = useI18n()
   const { sessions, count, totalCost } = props
+  const [details, setDetails] = useState<Record<string, SessionDetailState>>({})
+  const startedRef = useRef<Set<string>>(new Set())
+
+  const loadDetail = (id: string): void => {
+    if (startedRef.current.has(id)) return
+    startedRef.current.add(id)
+    fetchSessionUsage(id).then(res => {
+      setDetails(prev => ({
+        ...prev,
+        [id]: res.ok && res.data !== undefined
+          ? { error: null, data: res.data }
+          : { error: res.error ?? null, data: null },
+      }))
+    }, err => {
+      const message = (err as { message?: string } | null)?.message ?? String(err)
+      setDetails(prev => ({ ...prev, [id]: { error: message, data: null } }))
+    })
+  }
+
   if (sessions.length === 0) return <div className="dq-empty">{t('sessions.empty')}</div>
   const top = sessions[0].cost
   return (
@@ -597,21 +646,34 @@ function SessionRanking(props: { sessions: SessionCost[]; count: number; totalCo
       <ol className="dq-sessions">
         {sessions.map(s => (
           <li key={s.id} className="dq-session">
-            <div className="dq-session-head">
-              <span className="dq-session-title" title={`${s.title}\n${s.id}`}>{s.title || t('sessions.fallbackTitle', { id: s.id })}</span>
-              <span className="dq-session-cost">¥ {fmt(s.cost)}</span>
-            </div>
-            <div className="dq-session-track">
-              <div className="dq-session-fill" style={{ width: `${Math.max((s.cost / (top || 1)) * 100, 1.5)}%` }} />
-            </div>
-            <div className="dq-session-sub">
-              {t('sessions.detail', {
-                tokens: fmtCompact(s.total, locale),
-                calls: t('common.calls', { count: fmtInt(s.calls) }),
-                ago: agoText(s.lastActive, t),
-              })}
-              {totalCost > 0 && <> · {t('sessions.share', { percent: ((s.cost / totalCost) * 100).toFixed(1) })}</>}
-            </div>
+            <details
+              className="dq-session-details"
+              onToggle={e => { if (e.currentTarget.open) loadDetail(s.id) }}
+            >
+              <summary className="dq-session-summary">
+                <span className="dq-session-chevron" aria-hidden="true">▸</span>
+                <div className="dq-session-summary-body">
+                  <div className="dq-session-head">
+                    <span className="dq-session-title" title={`${s.title}\n${s.id}`}>{s.title || t('sessions.fallbackTitle', { id: s.id })}</span>
+                    <span className="dq-session-cost">¥ {fmt(s.cost)}</span>
+                  </div>
+                  <div className="dq-session-track">
+                    <div className="dq-session-fill" style={{ width: `${Math.max((s.cost / (top || 1)) * 100, 1.5)}%` }} />
+                  </div>
+                  <div className="dq-session-sub">
+                    {t('sessions.detail', {
+                      tokens: fmtCompact(s.total, locale),
+                      calls: t('common.calls', { count: fmtInt(s.calls) }),
+                      ago: agoText(s.lastActive, t),
+                    })}
+                    {totalCost > 0 && <> · {t('sessions.share', { percent: ((s.cost / totalCost) * 100).toFixed(1) })}</>}
+                  </div>
+                </div>
+              </summary>
+              <div className="dq-session-expand">
+                <SessionDetail state={details[s.id]} />
+              </div>
+            </details>
           </li>
         ))}
       </ol>

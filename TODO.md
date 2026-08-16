@@ -149,6 +149,13 @@ widget.tsx / styles.ts 的真实截图（1440/1024/620/390px 四档视口 + 悬�
 
 ## 已完成
 
+- [x] **会话排行加展开详情按钮**（轮次 46，用户直接反馈的新需求）— 「会话成本排行」每行原来只有
+  标题/费用/占比条/tokens/调用/最后活动六个汇总字段，用户要求加一个可展开的按钮，展开内容要和轮次 45
+  「当前会话消耗」卡片一样。每行改为原生 `<details>`（延续 `.dq-pricing`/`.dq-coverage` 已有的
+  disclosure 语法），首次展开才按需 `fetchSessionUsage(id)`，收起再展开不重复请求（组件内按 id 缓存），
+  展开区直接复用 `SessionUsageCard` 渲染完整明细（同一个组件，不是仿写）；加载态复用 `SessionUsageSkeleton`
+  骨架屏，错误态复用 `.dq-empty--error` + `localizeApiError`。键盘 Tab+Enter/Space、触屏点按均为原生
+  `<details>` 行为，未新增翻译键（复用轮次 45 已有词条），620px 无新增横向溢出。
 - [x] **新增当前会话消耗卡片**（轮次 45，用户直接反馈的新需求）— 用户指出「额度」tab 挂在具体会话
   内部、和「对话」「对话轨迹」同层级，但内容全是账户全局维度，缺一张这个会话专属的消耗卡片。host 端
   新增 `fetchSessionUsage()` 与 `GET /api/dsh-usage-dashboard/session?id=` 路由（同一鉴权前缀，不接入

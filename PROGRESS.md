@@ -93,6 +93,66 @@
 
 ## 已完成（续）
 
+- （轮次 46）`feat(dashboard)`: 会话排行加展开详情按钮。
+  - 背景（用户直接反馈，紧接轮次 45）：「会话成本排行」卡片（`SessionRanking`）每行只展示汇总字段
+    （`SessionCost`：标题/费用/占比条/tokens/调用次数/最后活动），用户要求加一个可展开的按钮，展开后
+    内容要和轮次 45 刚做的「当前会话消耗」卡片一样——即同一个 `SessionUsageCard` 组件、同一条
+    `fetchSessionUsage(id)` 链路，不新写一套展示逻辑。
+  - Act：每行 `<li className="dq-session">` 内部改为原生 `<details className="dq-session-details">`，
+    延续 `.dq-pricing`/`.dq-coverage`/`.dq-remaining`/`.dq-runway` 已建立的 disclosure 语法（隐藏原生
+    marker、自绘旋转 `▸`、`:focus-visible` 环），而不是新开一套 `aria-expanded` 按钮状态机——原有的
+    标题/费用/占比条/tokens/调用/时间四行内容原样搬进 `<summary>`（包一层 flex body div 放在 chevron
+    旁边，本身不改动任何既有 className），键盘 Tab 到达、Enter/Space 展开收起、触屏点按全部是浏览器
+    原生行为，不用手写。新增 `SessionDetail` 子组件承接三态：`state===undefined`（首次展开前）渲染
+    `SessionUsageSkeleton`（轮次 45 已有骨架屏组件，原样复用）；`state.error!==null` 渲染
+    `.dq-empty.dq-empty--error` + `localizeApiError`（和「当前会话消耗」卡片错误态同一手法）；
+    `state.data!==null` 直接 `<SessionUsageCard data={state.data} />`——三处渲染分支和「当前会话消耗」
+    卡片的三态判断逐字对应，因为就是同一个组件实例，不是视觉上像而是代码上就是同一个函数。请求时机：
+    `<details>` 的 `onToggle` 只在 `e.currentTarget.open===true` 时调用 `loadDetail(id)`；`loadDetail`
+    内部用一个 `Set<string>`（`startedRef`）判断这个 id 是否已经发起过请求，已发起过就直接跳过，
+    确保"收起再展开"不重复打网络请求，`fetchSessionUsage` 自身的内存级 in-flight 去重（轮次 45 已有）
+    再兜底一层并发场景。样式新增 `.dq-session-details`/`.dq-session-summary`/`.dq-session-chevron`/
+    `.dq-session-summary-body`/`.dq-session-expand`（`styles.ts`），展开区背景复用 `.dq-coverage-body`
+    同一套间距/圆角/`bg-layer-2` token（10px 外间距、11px/12px 内边距、10px 圆角），不新发明视觉语言；
+    `.dq-balance-grid .dq-stat{flex:1 1 100%}` 620px 换行规则是无嵌套限定的全局选择器，嵌套在展开区里
+    自动生效，未新增窄屏专属规则。未新增任何翻译键——复用轮次 45 已有的 `sessionUsage.*`/`error.query`
+    等键，唯一新增的可见字符是 `aria-hidden` 的 `▸` 图标字符，不需要翻译。
+  - Verify（自测）：`pnpm run build`、`pnpm run typecheck`、`node test/run.mjs`（50/50，含既有 i18n 键
+    集合/占位符一致性用例，本轮未新增用例因为没有新增翻译键或新的纯函数逻辑）均 exit 0。
+    真机验证（`systemctl restart dsh.service` 后 `is-active=active`，Playwright + 本机 Chromium 1228，
+    真实登录 cookie）：
+    1. 首次点击展开行「写一个查看DeepSeek额度的dsh插件」触发且仅触发 1 次
+       `GET /api/dsh-usage-dashboard/session?id=session-484a1c14-...` 请求；请求飞行期间截到骨架屏
+       DOM（`.dq-skel`），随后骨架消失、渲染出 `.dq-balance-grid`（¥11.38 / 1.3亿 tokens / 302 次调用）
+       与 `.dq-rank`（deepseek-v4-pro ¥11.38 100.0%）；用 `curl` 直接查同一
+       `/session?id=session-484a1c14-...` 得到的原始 JSON（`cost=11.382923200000002`/`total=131513218`/
+       `calls=302`/单模型 `deepseek-v4-pro`/`firstActive=1786700568858`/`lastActive=1786728332993`）
+       逐项对上浏览器渲染的数字，Python 换算 `firstActive`/`lastActive` 到北京时间得到
+       `2026/8/14 17:42 – 2026/8/15 01:25`，与卡片显示的活跃时间区间逐分钟一致——证明展开区确实是
+       同一条 `/session` 接口 + 同一个渲染组件，不是另外拼出来的数字。
+    2. 收起再展开同一行：`details.open` 正确在 `true`/`false`间切换，且收起→重新展开这一次
+       **没有触发新的网络请求**（请求计数前后差值为 0），确认「不重复请求、组件内缓存」生效。
+    3. 键盘：`Tab` 后 `document.activeElement.tagName===SUMMARY`；聚焦态按 `Enter` 展开
+       （`details.open` 变 `true`），再按一次 `Enter` 收起（变 `false`），全程未点鼠标。
+    4. 触屏：对第二行用 `page.tap()`（`hasTouch:true` context）点按 `<summary>`，行展开并成功加载出
+       `.dq-balance-grid` 内容，验证触屏可独立完成展开动作。
+    5. 620px 窄屏：展开一行后 `document.documentElement.scrollWidth===clientWidth`
+       且 `.dq-balance.scrollWidth===clientWidth`（均相等，无新增横向溢出），截图确认展开区三个 Stat
+       与模型占比行按既有窄屏规则自然换行、无重叠截断。
+    6. 中英文：本轮未新增任何翻译键（全部复用轮次 45 已有 `sessionUsage.*` 与既有错误码翻译），
+       `test/run.mjs` 里的中英文键集合/占位符一致性测试维持通过；未做额外的真机英文态切换，因为
+       LEARNINGS 记录过「Settings → Language 是进程级共享设置」，本机同时可能有其他并发 session
+       在用同一个 `dsh.service`，临时切换有干扰对方验证的风险，本轮改动面又没有引入任何需要新增
+       翻译的文本，判定收益不足以承担这个风险。
+    console 全程 0 error、0 pageerror。截图证据：`/tmp/dsh-r46-verify/expanded-row.png`（展开态单行
+    特写）、`/tmp/dsh-r46-verify/narrow-620.png`（620px 窄屏，含展开行与其余收起行对照）。
+    独立 QA：真实登录后展开第一行恰好新增 1 次 `/session?id=` 请求，明细与「当前会话消耗」卡片
+    （¥11.38/1.3亿tokens/302次调用/deepseek-v4-pro 100.0%）逐字节一致；收起再展开请求数不变（缓存
+    命中）；依次展开另外 3 行，各行各新增恰好 1 次请求且互不串号；键盘 Tab+Enter、触屏 tap 均可展开，
+    `:focus-visible` 焦点环可见；620px 下两行展开无横向溢出、进度条/费用数字未被挤压；拦截某行接口
+    返回 500 后该行显示清晰「HTTP 500」错误文案，不裸露堆栈，其它行不受影响。console error 仅历史
+    已知噪音，pageerror 0。截图：`/tmp/dsh-ui-audit/r46-01`–`r46-08`。
+
 - （轮次 45）`feat(dashboard)`: 新增当前会话消耗卡片。
   - 背景（用户直接反馈，非排版 backlog）：用户指出「额度」tab 挂在具体会话内部、和「对话」「对话轨迹」同层级，
     但 tab 内全部内容都是账户全局维度（累计余额、全部会话用量、模型/会话排行），缺一张这个具体会话专属的

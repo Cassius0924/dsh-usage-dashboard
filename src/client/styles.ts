@@ -214,6 +214,25 @@ export const css = `
    margin — this project always declares spacing explicitly. */
 p.dq-session-sub{margin:8px 0}
 .dq-session-foot{margin:12px 0 0;font-size:12px;color:var(--dsw-alias-label-tertiary,#59636e)}
+/* 轮次 46: each ranking row is now a <details> whose <summary> wraps the existing
+   head/track/sub trio unchanged (in a flex-column body div) plus a leading chevron —
+   same disclosure grammar as .dq-pricing/.dq-coverage above (hidden native marker,
+   rotating glyph, :focus-visible ring), just applied to a multi-line summary instead
+   of a single line. .dq-session-details needs its own min-width:0 because it is now
+   the flex item inside .dq-session that the ellipsis chain must shrink through. */
+.dq-session-details{min-width:0}
+.dq-session-details>summary{list-style:none;cursor:pointer}
+.dq-session-details>summary::-webkit-details-marker{display:none}
+.dq-session-summary{display:flex;align-items:flex-start;gap:8px;border-radius:8px;padding:4px;margin:-4px}
+.dq-session-summary:hover{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05))}
+.dq-session-summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
+.dq-session-chevron{flex:none;width:12px;margin-top:4px;font-size:10px;line-height:1;color:var(--dsw-alias-label-tertiary,#59636e);transition:transform .15s ease}
+.dq-session-details[open] .dq-session-chevron{transform:rotate(90deg)}
+.dq-session-summary-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+/* Expanded body reuses the same shaded-inset language as .dq-coverage-body (10px
+   gap from the summary, 11px/12px padding, 10px radius, bg-layer-2) rather than
+   inventing a new "nested panel" look. SessionUsageCard renders inside unchanged. */
+.dq-session-expand{margin-top:10px;padding:11px 12px;border-radius:10px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.06))}
 .dq-rank{display:flex;flex-direction:column;gap:14px}
 .dq-rank-row{display:flex;flex-direction:column;gap:5px;min-width:0}
 .dq-rank-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
