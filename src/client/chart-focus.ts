@@ -42,3 +42,24 @@ export function nextPinnedIndex(current: number | null, tapped: number): number 
 export function isTapGesture(dx: number, dy: number, dt: number, moveThreshold = 10, timeThreshold = 500): boolean {
   return Math.hypot(dx, dy) <= moveThreshold && dt <= timeThreshold
 }
+
+/**
+ * Per-slot totals across every series of a stacked bar chart: each column's
+ * height must reflect the *summed* usage of every selected model at that
+ * time slot, not any single model's value — otherwise a column with many
+ * small models would look shorter than a column with one large one even
+ * though it represents more total usage.
+ */
+export function stackedTotals(series: Array<{ bars: Array<{ value: number }> }>, count: number): number[] {
+  return Array.from({ length: count }, (_, i) => series.reduce((sum, s) => sum + (s.bars[i]?.value ?? 0), 0))
+}
+
+/**
+ * Highest value in the list, or 1 when every value is zero — the shared
+ * fallback scale so an all-zero chart still divides safely instead of by 0.
+ */
+export function maxOrOne(values: number[]): number {
+  let max = 0
+  for (const v of values) if (v > max) max = v
+  return max > 0 ? max : 1
+}

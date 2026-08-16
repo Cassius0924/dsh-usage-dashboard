@@ -1,6 +1,6 @@
 /** Dependency-free bar chart and heatmap primitives. */
 import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
-import { isTapGesture, lastPopulatedIndex, nextChartFocus, nextPinnedIndex, type ChartFocusKey } from './chart-focus.ts'
+import { isTapGesture, lastPopulatedIndex, maxOrOne, nextChartFocus, nextPinnedIndex, stackedTotals, type ChartFocusKey } from './chart-focus.ts'
 import { useI18n, type LocaleId } from './i18n.tsx'
 import type { LocaleKey } from './locales.ts'
 
@@ -193,7 +193,20 @@ export interface HeatDatum {
   calls: number
 }
 
-/** Multi-series bar chart: one bar per series, side by side, per slot. */
+/**
+ * Multi-series bar chart: one bar per time slot, each series' value stacked
+ * inside it (series[0] at the bottom, later series stacked above, same order
+ * in every column). Segment height is scaled against the largest *per-slot
+ * total* across all slots (not the largest single value) so the stacked
+ * height reflects that slot's combined usage and columns stay comparable to
+ * each other. Each segment stays its own focusable/hoverable/tappable point —
+ * `pointIndex = i * series.length + seriesIndex` is unchanged from the old
+ * side-by-side layout, so `chart-focus.ts`'s roving tabindex (plain ±1 /
+ * Home / End, no 2-D semantics) needs no changes: arrow keys still move one
+ * point at a time, they just now walk bottom-to-top through one column's
+ * models before advancing to the next column, instead of left-to-right
+ * through side-by-side bars.
+ */
 export function GroupedBars(props: {
   series: Array<{ key: string; color: string; bars: BarDatum[] }>
   height?: number
@@ -210,9 +223,7 @@ export function GroupedBars(props: {
     const scroll = scrollRef.current
     if (scroll !== null && minWidth !== undefined) scroll.scrollLeft = scroll.scrollWidth
   }, [count, minWidth])
-  let max = 0
-  for (const s of series) for (const datum of s.bars) if (datum.value > max) max = datum.value
-  const scale = max > 0 ? max : 1
+  const scale = maxOrOne(stackedTotals(series, count))
   return (
     <div className="dq-chart-wrap" ref={wrapRef} onPointerLeave={hide}>
       <div className="dq-bars-scroll" ref={scrollRef}>

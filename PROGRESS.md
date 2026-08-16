@@ -93,6 +93,69 @@
 
 ## 已完成（续）
 
+- （轮次 44）`feat(charts)`: 多选模型柱状图改堆叠。
+  - Review / Critique：用户直接反馈——「用量趋势」卡模型筛选下拉多选 2+ 个模型时，`charts.tsx` 的
+    `GroupedBars` 把每个时间点渲染成并列分组柱（每模型一根独立柱子，`.dq-bar-group{display:flex;
+    align-items:flex-end}` 横向排列），柱子数量随选中模型数翻倍、图表变宽变乱，且每根柱子的高度只按
+    "自己的值 / 全部数据里的单值最大值"独立计算，看不出这个时间点的合计用量。用户想要同一时间点的多个
+    模型融合进一根柱子、按模型堆叠显示。
+  - Act：`GroupedBars` 从并列分组柱改为堆叠柱，核心是两处：①**布局**——`.dq-bar-group` 从横向 flex 改
+    `flex-direction:column-reverse`（DOM 顺序 series[0]→series[n-1] 对应视觉上从下到上，因为
+    column-reverse 把第一个子节点放在主轴末端＝底部），配合 `.dq-bar-col` 原有的 `justify-content:
+    flex-end`，堆叠组不再需要 `height:100%` 撑满，天然贴底对齐；每个模型分段用现有的
+    `Math.max(1, Math.round((datum.value/scale)*height))` 计算自己的像素高度，`.dq-bar-group .dq-bar`
+    的 `flex:0 0 auto;width:100%` 替换掉原来横向布局用的 `flex:1 1 0`。②**scale 算法**——新增两个纯函数
+    `stackedTotals`（按时间点把所有 series 的值加总）与 `maxOrOne`（取最大值，全零兜底为 1，避免除零），
+    放进 `chart-focus.ts`（该文件已经是"图表交互/计算相关纯函数"的落脚点，不只是狭义的"焦点"逻辑，
+    `isTapGesture`/`nextPinnedIndex` 先例同理）方便像 `nextChartFocus` 一样被单测直接覆盖；`scale =
+    maxOrOne(stackedTotals(series, count))`，即"所有时间点的合计值"里的最大值，而不是原来的"所有模型
+    所有时间点的单值最大值"，堆叠后每根柱子的总高度才能正确反映该时间点的合计用量，不同柱子之间也仍然
+    可比。视觉细节：每个分段之间加 1px 极细分隔——用 `box-shadow:inset 0 1px 0 rgba(0,0,0,.18)` 而不是
+    `border-top`，因为 `.dq-bar` 走 content-box（本文件除悬浮窗卡片外都没有全局 `box-sizing:border-box`
+    重置），真实 border 会把 1px 叠加进盒子总高度、破坏像素级的堆叠总高度精度，inset 阴影画在盒子内部
+    不影响尺寸；只给非最后一个 DOM 子节点（即非最上层分段）加这条阴影，最上层分段的"上边"是整根柱子的
+    外边缘，不需要再画一条线。圆角同理重新分配给堆叠后的物理顶/底：`first-child`（视觉最底部）拿
+    `border-radius:0 0 2px 2px`，`last-child`（视觉最顶部）拿 `2px 2px 0 0`，其余分段方角。
+    **键盘导航语义未改动 `chart-focus.ts` 的既有逻辑**：`nextChartFocus` 本就是纯线性 ±1 / Home / End，
+    不含二维语义（热力图靠传参 `horizontalStep=7` 复用同一函数实现按周跳转，`GroupedBars` 未传参、维持
+    `horizontalStep=1`）；`pointIndex = i * series.length + seriesIndex` 这套扁平索引原样保留，只是它
+    所指向的分段现在在视觉上纵向堆叠而不是横向并排——方向键左右仍先在同一根柱子内部的模型分段间移动
+    （因为同一时间点 i 的所有 seriesIndex 在扁平数组里连续），走完当前柱子的全部模型后才移动到下一个
+    时间点，这个语义在并列布局下就已经是这样，堆叠后自然延续，不需要额外的模式切换来分开"跨模型"和
+    "跨时间点"。触屏 tap-to-pin、桌面 hover、`:focus-visible` 焦点环、`prefers-reduced-motion` 均复用
+    `useChartTip`/`useRovingChartPoints` 原有逻辑，未改一行。图例：`dashboard.tsx` 里 `GroupedBars` 下方
+    本就渲染 `.dq-legend`（模型名 + swatch 颜色，颜色继续按 `MODEL_COLORS`/`colorOf` 取色），未改。
+  - Verify：新增 2 个纯函数单测（`stackedTotals` 按时间点加总、缺失点按 0 处理；`maxOrOne` 全零兜底为
+    1），`test/chart-focus.test.ts` 44/44（含并发协作的其它改动后为 48/48）；`pnpm run build`、
+    `pnpm run typecheck`、`node test/run.mjs` 均 exit 0，client-only 改动无需重启 `dsh.service`。
+    Playwright 在运行中的 `dsh.service`（`http://127.0.0.1:3080`）实测：勾选 2 个模型后
+    `.dq-bars .dq-bar-col` 每列仍是 30/30（原 30 天不翻倍），每列内 `.dq-bar-group .dq-bar` 恰好 2 段，
+    所有非空列的"底部分段"颜色一致为 `rgb(65,118,230)`（pro 蓝，`series[0]`），验证堆叠顺序全列一致不
+    错位；峰值日（08-14）截图确认单根柱子里蓝（pro）+绿（flash）视觉融合、总高度对应合计用量；hover
+    该分段 tooltip 显示「deepseek-v4-pro / 2026-08-14 / 106,731,038 tokens / ¥9.21 / 300 次调用」；
+    键盘只有 1 个 `tabindex=0` 入口（roving 未被打破），`ArrowLeft` 从 flash（08-16，同日）移动到 pro
+    （08-16，同日，验证"先走完同柱模型再跨天"），`Home` 跳到 07-18 的 pro（首个时间点的第一个模型）；
+    620px 视口（先在 1280px 完成导航与勾选、再收窄，因为 620px 下 DSH 侧栏本身会折叠成纯图标、找不到
+    会话列表文字）下 `document.documentElement.scrollWidth === clientWidth`，无新增横向溢出；触屏
+    context（390×844，`hasTouch`）对最高分段 `.tap()` 后 `.dq-bar--pinned` 计数 1→0→（再 tap）0，
+    `.dq-tip` 同步 1→0，文案与 hover 一致；通过 DSH 原生 Settings→Language 切到 English 后图例
+    「deepseek-v4-pro / deepseek-v4-flash」、图表标题「Usage trend (tokens)」、tooltip「300 calls」
+    均正确本地化，结构同样 30/30 列且堆叠布局不变。四个场景 console 均只有登录流程自带的 `favicon.ico`
+    401（历史基线噪音，与本次改动无关），无其它 console error / pageerror。
+    **QA 过程踩坑**：验证英文场景时用 DSH 原生 Settings→Language 切到 English 属于进程级共享设置（写入
+    `/root/.dsh/settings.yaml` 的 `locale.preference`），脚本内切回中文的收尾步骤因定位器时机问题未生效，
+    验证完成后独立确认时发现真实实例仍停留在 English；已用同样的 Settings→Language UI 手动切回并核实
+    `settings.yaml` 恢复 `zh`。教训记入 LEARNINGS.md：以后任何"临时切语言验证英文"的自动化步骤，收尾必须
+    单独截图/读文件确认已经切回，不能只依赖脚本里"应该切回"的那一步真的执行成功。截图：
+    `/tmp/claude-501/dsh-stacked-qa/01-06`、`11-after-revert.png`（Builder 自测）。
+  - 独立 QA：登录会话「Hi」（模型 deepseek-v4-pro/deepseek-v4-flash）实测 30/30 逐天列、24/24 逐小时列均恰好
+    2 段堆叠、颜色顺序全站一致（底 pro/顶 flash）；`.dq-bar-group` 高度与分段高度和的最大差为 0px（取整
+    完全吻合）；hover tooltip 文案与分段 `aria-label` 逐字一致；键盘 ArrowRight 先走完同列模型段再跳
+    下一天，Home/End 正确落在 07-18（0 值）与 08-16；触屏 tap 固定/取消正常；图例双语正确；620px 下
+    `scrollWidth===clientWidth`；单模型/全选模型仍走未改动的 `Bars` 组件（`charts.tsx` 该函数字节级未变）；
+    console error 仅历史基线噪音，pageerror 0。截图：`/tmp/dsh-ui-audit/r44qa-01`–`r44qa-11`。
+
+
 - （轮次 43）`fix(dashboard)`: 修复预计可用 hover 无内容。
   - Review / Critique：P1 用户反馈账户余额卡「预计可用」数字 hover 上去什么都不显示。读 `dashboard.tsx`
     发现它仍是纯原生 `title={runwayTitle}` 挂在一个不可聚焦的 `<div>` 上（约 1053-1058 行）；同一张卡片里

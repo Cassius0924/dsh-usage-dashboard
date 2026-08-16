@@ -263,8 +263,11 @@ export const css = `
 .dq-model-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dq-model-item--all{border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));padding-bottom:8px;margin-bottom:2px;border-radius:6px}
 .dq-model-tag{color:var(--dsw-alias-label-tertiary,#59636e);font-size:11px;flex:none}
-.dq-bar-group{display:flex;align-items:flex-end;gap:2px;height:100%;width:100%}
-.dq-bar-group .dq-bar{flex:1 1 0;min-width:0}
+.dq-bar-group{display:flex;flex-direction:column-reverse;width:100%}
+.dq-bar-group .dq-bar{flex:0 0 auto;width:100%;border-radius:0}
+.dq-bar-group .dq-bar:first-child{border-radius:0 0 2px 2px}
+.dq-bar-group .dq-bar:last-child{border-radius:2px 2px 0 0}
+.dq-bar-group .dq-bar:not(:last-child){box-shadow:inset 0 1px 0 rgba(0,0,0,.18)}
 .dq-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:8px;font-size:12px;color:var(--dsw-alias-label-secondary,#59636e)}
 .dq-legend-item{display:inline-flex;align-items:center;gap:6px}
 .dq-legend-swatch{width:10px;height:10px;border-radius:3px;flex:none}
