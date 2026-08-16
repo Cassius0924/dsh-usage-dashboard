@@ -747,6 +747,14 @@ export function BalanceDashboard(): ReactElement {
   const [selectedModels, setSelectedModels] = useState<string[]>([])
   const [windowDays, setWindowDays] = useState<UsageWindowDays>(usageWindowStore.get())
   const [chartMetric, setChartMetric] = useState<ChartMetric>(chartMetricStore.get())
+  // "预计可用" hover preview: an unopened <details> skips rendering its
+  // non-summary children in Chromium (a content-visibility-like platform
+  // behavior), so CSS-only `:hover{display:block}` never paints anything
+  // when the element isn't actually open. Drive `open` from state instead —
+  // hovering opens it for a live preview; a manual click/keyboard/touch open
+  // keeps it open independent of hover.
+  const [runwayHovering, setRunwayHovering] = useState(false)
+  const [runwayManuallyOpened, setRunwayManuallyOpened] = useState(false)
   const budgetInputRef = useRef<HTMLInputElement | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [composerHeight, setComposerHeight] = useState<number | null>(null)
@@ -1050,12 +1058,28 @@ export function BalanceDashboard(): ReactElement {
             </div>
             <div className="dq-stat">
               <div className="dq-stat-label">{t('balance.runway')}</div>
-              <div
+              <details
                 className={`dq-stat-value dq-runway${daysLeft !== null && daysLeft < 3 ? ' dq-stat-value--bad' : ''}`}
-                title={runwayTitle}
+                open={runwayHovering || runwayManuallyOpened}
+                onPointerEnter={() => setRunwayHovering(true)}
+                onPointerLeave={() => setRunwayHovering(false)}
               >
-                {daysLeftText}
-              </div>
+                <summary
+                  title={t('balance.runwayBreakdownTitle')}
+                  onClick={e => {
+                    // Own the toggle fully instead of the native default action: a controlled
+                    // <details> can be forced open by hover, and a plain native toggle here
+                    // would fight that (e.g. it flips to "closed" while the mouse is still
+                    // hovering). Preventing default and flipping our own "manually opened"
+                    // state keeps hover-preview and click/keyboard/tap-to-pin independent.
+                    e.preventDefault()
+                    setRunwayManuallyOpened(v => !v)
+                  }}
+                >
+                  {daysLeftText}
+                </summary>
+                <div className="dq-runway-detail">{runwayTitle}</div>
+              </details>
             </div>
             <Stat label={t('common.status')}>
               <div className={`dq-stat-value${balance?.isAvailable === false ? ' dq-stat-value--bad' : ' dq-stat-value--ok'}`}>

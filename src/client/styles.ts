@@ -82,7 +82,16 @@ export const css = `
 .dq-stat-value{font-size:18px;font-weight:650;color:var(--dsw-alias-label-primary,#1f2328);font-variant-numeric:tabular-nums}
 .dq-stat-value--ok{color:var(--dsw-alias-state-success-primary,#2da44e)}
 .dq-stat-value--bad{color:var(--dsw-alias-state-error-primary,#cf222e)}
-.dq-runway{cursor:help;text-decoration:underline dotted var(--dsw-alias-border-l2,rgba(0,0,0,.25));text-underline-offset:4px}
+/* 轮次 43: .dq-runway is a controlled <details> (see dashboard.tsx) — hover/toggle state
+   drives the real open attribute now, so .dq-runway-detail only needs to react to [open];
+   an unopened <details>'s non-summary children don't actually render in current Chromium no
+   matter what display value author CSS gives them (:hover{display:block} alone is a dead end). */
+.dq-runway{position:relative}
+.dq-runway>summary{display:inline-block;list-style:none;border-radius:4px;cursor:pointer;text-decoration:underline dotted var(--dsw-alias-border-l2,rgba(0,0,0,.25));text-underline-offset:4px}
+.dq-runway>summary::-webkit-details-marker{display:none}
+.dq-runway>summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:3px}
+.dq-runway-detail{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;max-width:240px;padding:8px 10px;background:var(--dsw-alias-bg-overlay,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);white-space:normal;font-size:12px;font-weight:500;line-height:1.5;color:var(--dsw-alias-label-primary,#1f2328)}
+.dq-runway[open] .dq-runway-detail{display:block}
 /* hero number for the balance, matching .dq-period-cost; relies on cascade order (declared after
    .dq-stat-value, same specificity) to win over the .dq-stat-value it's paired with in JSX — keep it below */
 .dq-remaining{position:relative;font-size:22px;font-weight:680;letter-spacing:-.01em;line-height:1.25}
@@ -92,6 +101,15 @@ export const css = `
 .dq-remaining-breakdown{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;flex-direction:column;gap:4px;padding:8px 10px;background:var(--dsw-alias-bg-overlay,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);white-space:nowrap;font-size:12px;font-weight:500;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-remaining:hover .dq-remaining-breakdown,.dq-remaining[open] .dq-remaining-breakdown{display:flex}
 .dq-remaining-granted{color:var(--dsw-alias-label-tertiary,#59636e);font-weight:400;font-size:11px}
+/* narrow screens: .dq-balance-grid wraps its 3 stats onto separate lines, so the absolutely-positioned
+   .dq-remaining-breakdown/.dq-runway-detail popovers can float down over whichever stat now sits in the
+   next row (e.g. "余额明细" open covering "预计可用"'s clickable summary) — force each stat onto its own
+   full-width row and switch both popovers to normal in-flow layout so an open one pushes its own row
+   taller instead of overlaying a sibling; desktop keeps the original hover-overlay behavior unchanged */
+@media (max-width:620px){
+  .dq-balance-grid .dq-stat{flex:1 1 100%}
+  .dq-remaining-breakdown,.dq-runway-detail{position:static;margin-top:6px;box-shadow:none;max-width:none;white-space:normal}
+}
 .dq-period-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
 .dq-period{min-width:0;padding:4px 16px}
 .dq-period:first-child{padding-left:0}

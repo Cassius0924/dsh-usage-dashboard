@@ -93,6 +93,213 @@
 
 ## 已完成（续）
 
+- （轮次 43）`fix(dashboard)`: 修复预计可用 hover 无内容。
+  - Review / Critique：P1 用户反馈账户余额卡「预计可用」数字 hover 上去什么都不显示。读 `dashboard.tsx`
+    发现它仍是纯原生 `title={runwayTitle}` 挂在一个不可聚焦的 `<div>` 上（约 1053-1058 行）；同一张卡片里
+    紧邻的「余额明细」（`.dq-remaining`）在轮次 29 已经从这个纯 hover 方案改成了 `<details><summary>`
+    disclosure（保留桌面 hover 预览 title + 点击/触屏/Enter/Space 均可展开），DESIGN_NOTES.md「交互约定」
+    也明确写着"解释型明细不能只靠 hover；优先使用原生 details/summary"。「预计可用」从未跟进这条轮次 29
+    就已确立的约定，是一处遗漏修改的旧代码——不管原生 `title` 在当前宿主环境下的真实触发条件是什么，
+    停留在纯 hover-only 方案本身就已经不符合约定，应按同一套模式改造，而不是单独排查"为什么原生 title
+    没触发"再打个不成体系的补丁。
+  - Act：把 `.dq-runway` 从 `<div title=...>` 改成与 `.dq-remaining` 同构的 `<details className="dq-stat-value
+    dq-runway ..."><summary title={runwayTitle}>{daysLeftText}</summary><div className="dq-runway-detail">
+    {runwayTitle}</div></details>`——摘要文本 `daysLeftText`（如「20 天」）作为可点击/可聚焦的触发器，
+    保留 `title` 属性维持桌面 hover 快速预览，展开后在 `.dq-runway-detail` 浮层里完整展示原先 `runwayTitle`
+    的说明文字（日期数不足时的 `balance.noRunway`，或有数据时的 `balance.runwayTitle`）。`styles.ts` 新增
+    `.dq-runway`（`position:relative`，去掉旧的 `cursor:help` 纯 hover 规则）、`.dq-runway>summary`（点状
+    下划线 + `cursor:pointer` + 2px `:focus-visible` 焦点环，抄 `.dq-remaining>summary`）、`.dq-runway-detail`
+    （复用 `.dq-remaining-breakdown` 的浮层视觉——背景/边框/圆角/阴影，但因为说明文字比金额明细长，改用
+    `white-space:normal` 允许换行，并加 `max-width:240px` 防止在三列布局的中间列位置把浮层撑出卡片右边界）。
+    `daysLeft<3` 时的红色警示态沿用 `dq-stat-value--bad`，颜色属性通过 CSS 继承从 `<details>` 传到子元素
+    `<summary>`，不需要改选择器。中英文文案（`balance.runway`/`balance.runwayTitle`/`balance.noRunway`）
+    原样复用，未新增 locale key，未改计价/统计口径。
+  - Verify：42/42 单测、build、typecheck 全过（exit 0）。Playwright 在真实运行的 `dsh.service`
+    （`http://127.0.0.1:3080`）上实测：`.dq-runway` 确认渲染为 `<details>`；桌面 hover 摘要后
+    `.dq-runway-detail` 的 `display` 从 `none` 变 `block`，内容为完整的「按近 7 天日均 ¥2.09 估算（含
+    无用量的日子；今天尚未过完）」；从「余额明细」Tab 一次即落到「预计可用」摘要，`:focus-visible` 焦点环
+    `outline: 2px solid rgb(65, 118, 230)`；Enter 键切换 `details.open` false→true，Space 键切回
+    true→false；鼠标点击可展开/收起；390px 触屏视口下 `summary.tap()` 后 `details.open===true`；
+    620/480/390px 三档视口下 `document.documentElement.scrollWidth===clientWidth`（均无横向溢出）；
+    余额卡三列结构（`.dq-stat`×3：余额明细/预计可用/状态）未被破坏；切到 English 后摘要 `title` 与展开内容
+    均为英文（"Based on ¥2.09 average daily spend over the last 7 days (including idle days; today is
+    incomplete)"），无中文残留；语言复测完毕后已切回中文并确认 `/root/.dsh/settings.yaml` 的
+    `locale.preference` 为 `zh`。console error 排除已知的登录流程自带的 `favicon.ico` 401（同轮次 34 记录的
+    基线噪音，与本次改动无关）后为 0，pageerror 0。截图：`/tmp/dsh-runway-audit/zh-runway-open.png`、
+    `en-runway-open.png`、`narrow-390-runway-open.png`。独立 QA：发现 1 个 P1（窄屏悬浮框互相遮挡）+
+    1 个 P2（title 与展开内容重复），修复见下。
+
+  - **修复轮次 1（独立 Critic P1 + P2）**：
+    - Review / Critique：独立 Critic 用 Playwright 在 400px 视口实测复现——`.dq-balance-grid` 是
+      `display:flex;flex-wrap:wrap`，窄屏（620px 及更窄）下三个 `.dq-stat`（余额明细/预计可用/状态）
+      挤不下一行会换行；「余额明细」展开后 `.dq-remaining-breakdown` 是 `position:absolute`，绝对定位
+      浮层不占正常流的空间，会直接悬浮盖住换行后紧邻其下方的「预计可用」——实测 `.dq-remaining-breakdown`
+      矩形 x:65-194,y:128.5-179 与 `.dq-runway>summary` 矩形 x:65-121,y:153-180 重叠，点击
+      `.dq-runway>summary` 被拦截超时。这个"绝对定位浮层 + flex-wrap 换行"结构问题源头是轮次 29 的
+      `.dq-remaining-breakdown` 设计（早就有，只是此前「预计可用」是不可交互的纯 `<div>`，盖住了也没有
+      功能损失），本轮把「预计可用」升级成 `<details>` 之后才把这块死区变成一个会被挡住、点不到的新增
+      功能点——是本轮真实暴露的回归，必须修。同时 Critic 指出 `.dq-runway` 的 `summary title={runwayTitle}`
+      和展开内容 `.dq-runway-detail` 文案完全重复，桌面 hover 时先看到自定义浮层、约 1 秒后浏览器原生
+      `title` 提示再叠一层相同文字，双重提示；对照 `.dq-remaining` 的既有模式——它的 `title` 是
+      `t('balance.breakdownTitle')`（"查看充值与赠送额度明细"）这种简短的"去看明细"提示语，和展开后的
+      实际数据内容不同、不重复，`.dq-runway` 应该跟上同一套约定而不是直接复用完整说明句当 title。
+    - Act：
+      1. `styles.ts` 在既有 620px 断点（`.dq-balance` 等一整批组件已用的同一个媒体查询断点，非新拍数字）
+         内新增规则：`.dq-balance-grid .dq-stat{flex:1 1 100%}` 让三个统计项在窄屏下总是各占一整行
+         （而不是让 flex-wrap 的自动换行结果去决定哪两项恰好同行、哪项落单，行为不确定）；
+         `.dq-remaining-breakdown,.dq-runway-detail{position:static;margin-top:6px;box-shadow:none;
+         max-width:none;white-space:normal}` 把两个浮层从"悬浮在文档流之上、不占位置"改成"参与正常文档流
+         排版、把自己所在的行撑高"——展开的浮层变成把当前这一整行（因为 1 已让每行只有一个 stat）撑高，
+         而不是绝对定位悬浮到下一行盖住别人；`.dq-remaining-breakdown` 原本 `white-space:nowrap` 在窄屏
+         下也一并覆盖为 `normal`，防止 static 布局下内容把行撑宽出视口（之前 nowrap 只在 absolute 悬浮、
+         不参与主流宽度计算时才安全）。桌面态（>620px）两条规则都不生效，`.dq-remaining`/`.dq-runway`
+         维持轮次 29/43 原有的 `position:absolute` 独立悬浮，互不影响、互不改变彼此的展开逻辑——没有引入
+         受控 state 或互斥展开这类更重的方案，纯 CSS 断点局部覆盖，改动面最小。
+      2. `locales.ts` 新增 `balance.runwayBreakdownTitle` 键（仿照 `balance.breakdownTitle` 的措辞），
+         中文「查看预计可用天数说明」/ 英文 "View estimated runway details"；`dashboard.tsx` 把
+         `.dq-runway>summary` 的 `title={runwayTitle}` 改成 `title={t('balance.runwayBreakdownTitle')}`，
+         不再和展开内容重复。`LocaleKey` 类型从 `zh` 派生、`en` 声明为 `Record<LocaleKey,string>`，两个
+         对象都补了这一行，跑 `typecheck` 校验过双语键集合一致（含 `test/i18n.test.ts` 的
+         "两份词典键完全一致" + "英文词典不含未翻译中文" 两条单测）。
+    - Verify：`pnpm run build` exit 0，`pnpm run typecheck` exit 0，`node test/run.mjs` 48/48 通过、
+      exit 0。真实运行的 `dsh.service`（`http://127.0.0.1:3080`）上用 Playwright 复现 Critic 的场景——
+      先点开「余额明细」`.dq-remaining`，再在其展开状态下操作「预计可用」`.dq-runway`：
+      - 620/480/390px 三档窄屏视口下：`.dq-remaining-breakdown` 与 `.dq-runway>summary` 的
+        `boundingBox()` 矩形 `overlap===false`（三档全部）；`.dq-runway>summary` 在此状态下点击
+        **不再超时**（`click({timeout:3000})` 直接成功）、点击后 `details.open===true`；两浮层都展开后
+        `.dq-runway-detail` 与 `.dq-remaining-breakdown` 仍 `overlap===false`；`document.documentElement`
+        的 `scrollWidth===clientWidth`（三档均无横向溢出）；Tab 从「余额明细」summary 一步落到「预计
+        可用」summary（`document.activeElement.closest('.dq-runway')!==null`），Enter 键可展开；
+        `summary.tap()` 触屏路径可展开。390px 截图 `/tmp/dsh-r43-overlap/390-both-open.png` 可见三个
+        统计项纵向堆叠、各占一整行，「预计可用」的浮层完整显示在「余额明细」浮层下方，两者不重叠、
+        文字都完整可读。
+      - 桌面 860/1440px 两档：同样先展开「余额明细」再点「预计可用」，两个浮层各自 `position:absolute`
+        独立悬浮，`overlap===false`（本来就不重叠，桌面态未受影响）；860px 截图
+        `/tmp/dsh-r43-overlap/860-both-open.png` 确认两浮层并排展开、互不干扰，与轮次 43 主改动实测的
+        桌面行为一致，未被本次窄屏修复破坏。
+      - console error 排除已知的 `favicon.ico` 401 基线噪音（用 `msg.location().url` 精确匹配，而非只
+        匹配 `msg.text()`——`msg.text()` 本身不含 "favicon" 字样，只靠文本过滤会漏判，本次验证脚本已
+        同时检查两处）后为 0，pageerror 0。验证脚本：
+        `/root/.npm/_npx/e41f203b7505f1fb/verify-r43.mjs`（playwright-core 只能从这个已安装依赖的目录
+        解析到，故脚本落在这里而非仓库内）。
+
+  - **修复轮次 2（独立 QA，本 feature 最后一轮修复机会）**：
+    - Review / Critique：独立 QA 用真实 Playwright hover（鼠标移到 summary 上、不点击）复测修复轮次 1
+      的成果，发现虽然 `getComputedStyle(.dq-runway-detail).display` 报告 `"block"`，但
+      `getBoundingClientRect()` 是 `{x:0,y:0,w:0,h:0}`——计算样式说"显示"，但实际渲染尺寸是零，用户
+      hover 上去仍然什么都看不到。QA 尝试注入 `display:block !important` 强制覆盖仍是 0×0，排除了选择器
+      优先级问题；又在一个完全独立、不含本项目任何代码的裸 `<details><summary>`+CSS `:hover` 测试页面上
+      复现了同样的现象，确认这是**当前 Chromium 版本本身的平台行为**：一个未展开（`open` 为 `false`）的
+      `<details>` 元素，它的非 `summary` 子元素即使被作者 CSS 设成 `display:block`，也不会真正渲染
+      出来——这不是简单的 UA 样式表 `display:none`（那种可以被子孙 `display:block` 覆盖），而更像
+      `content-visibility:hidden` 这类渲染层面"跳过整个子树"的机制，作者 CSS 对子孙元素的 `display`
+      声明覆盖不了祖先的这种跳过。也就是说修复轮次 1 把 `.dq-runway` 从纯 `<div title>` 换成
+      `<details><summary>` disclosure 这个方向本身是对的（不改就没有可聚焦、可键盘操作的触发器），但
+      "让子元素在**未展开**状态下靠 CSS `:hover{display:block}` 显形"这条具体技术路径，在当前 Chromium
+      下从一开始就不可能奏效，属于同一个方案里两个独立的问题被误判成了一个。**根因不是本轮或修复轮次 1
+      引入的新 bug**，`.dq-runway-detail` 的展开机制在修复轮次 1 提交时就已经这样写，只是没有用真实
+      hover（而非点击/键盘/触屏）系统性测过这条路径。QA 同时确认这个平台限制对本站现有的「余额明细」
+      （`.dq-remaining`/`.dq-remaining-breakdown`，轮次 29 实现，用的是同一套"CSS `:hover` 让未展开
+      `<details>` 子元素 `display:block`"技术）同样成立——轮次 29 当初"保留桌面 hover 快速预览"的验收
+      在当前 Chromium 版本下实际上也已经失效，只是这次借「预计可用」的问题才被发现。任务明确要求本轮
+      **只修 `.dq-runway`，不动 `.dq-remaining`**（那是轮次 29 的既有代码，不在本轮评审范围内，顺手改了
+      反而扩大改动面），因此这里只记录、留给后续新开一个任务专门处理「余额明细」的同一问题，不在本轮
+      动它的代码。
+    - Act：抛弃"CSS `:hover` 让未展开 `<details>` 的子元素 `display:block`"这个技术方案，把 `.dq-runway`
+      改成一个真正的**受控组件**：`dashboard.tsx` 的 `BalanceDashboard` 新增两个 state——`runwayHovering`
+      （鼠标/指针是否悬停在整个 `.dq-runway` 子树上）、`runwayManuallyOpened`（用户是否通过点击/键盘/
+      触屏主动展开过，会一直保持到再次点击/Enter/Space/再次 tap 收起）。`<details>` 的 `open` 属性改成
+      `open={runwayHovering || runwayManuallyOpened}`（受控，鼠标一旦真的移到它或它的后代（含浮层本身）
+      上方，`open` 就变成真的 `true`——真正 open 的 `<details>`，其子元素在当前 Chromium 下会正常渲染，
+      不再触发上面那条平台限制），`onPointerEnter`/`onPointerLeave`（而不是 `onMouseEnter`/`onMouseLeave`）
+      挂在 `<details>` 上更新 `runwayHovering`——用 Pointer Events 是因为触屏 tap 后合成的鼠标事件序列在
+      一些浏览器上会让 `:hover`/`mouseenter` 状态"粘住"直到点别处才清除，而 Pointer Events 对 touch
+      指针会在 `pointerup` 之后不久就正常派发 `pointerleave`，不会有这个"触屏误触发常驻 hover 态"的
+      问题。**没有采用"监听原生 `onToggle` 事件读取 `e.currentTarget.open` 来判断用户是否手动展开"这个
+      任务描述里给出的备选实现**：现代 Chromium（约 120+）对 `<details>` 的 `open` 属性无论是被脚本
+      赋值（我们的受控 `open` prop 因为 `runwayHovering` 变化而改变）还是被浏览器原生点击/键盘默认行为
+      切换，都会触发 `toggle` 事件——这意味着单纯"`onToggle` 里读到 `open` 就当作用户手动展开"这条简单
+      规则，会把"鼠标只是移上去、React 因此把受控 `open` 设成 `true`"这类程序化变化，和"用户真的点了一下"
+      混为一谈，导致 hover-only 预览被错误地"钉死"成手动展开状态、鼠标移开后不会自动收起——这正是任务
+      要保留的核心行为（hover-only 预览应该在移开后自动收起）会被破坏的地方。改用更直接、不依赖"区分
+      程序化 toggle 事件和用户 toggle 事件"这类隐含时序假设的方式：`<summary>` 的 `onClick` 里先
+      `e.preventDefault()` 挡掉浏览器对该点击（包括 Enter/Space 键盘激活合成出的 click 事件——`<summary>`
+      对 Enter/Space 的默认激活行为本身就是派发一个 click 事件，和鼠标点击走同一条默认动作）的原生
+      展开/收起默认动作，再自己 `setRunwayManuallyOpened(v => !v)` 翻转"手动钉住"状态——这样"用户到底
+      点没点"这件事完全由我们自己的 `onClick` handler 一次性决定，不需要在 `onToggle` 里反推 toggle
+      事件是程序触发还是用户触发。`onPointerEnter`/`onPointerLeave` 挂在整个 `<details>`（而不是只挂
+      `<summary>`）上，是为了复刻旧版 CSS `.dq-runway:hover` 的语义——鼠标从 `<summary>` 移进已展开的
+      `.dq-runway-detail` 浮层（`position:absolute`，视觉上悬浮在正常文档流之外，但仍是 `<details>`
+      的 DOM 后代）不应该被当成"离开了"，`pointerenter`/`pointerleave` 按 DOM 树、而不是按 CSS 视觉盒
+      判定"进入/离开"边界，这一点和旧的 `:hover` 伪类完全一致，改造后不会出现"鼠标移进浮层反而立刻自己
+      收起"的新回归。`styles.ts` 里 `.dq-runway-detail` 原来的选择器
+      `.dq-runway:hover .dq-runway-detail,.dq-runway[open] .dq-runway-detail{display:block}` 简化成
+      `.dq-runway[open] .dq-runway-detail{display:block}`——`:hover` 分支现在是死代码（`open` 现在真的
+      随 hover 同步变化，覆盖了 `:hover` 原本想覆盖的全部场景），保留只会误导后来者以为 hover 展示还在
+      靠 CSS 驱动，删掉换成一段注释说明新的受控组件方案和为什么旧写法在当前 Chromium 下走不通。未改动
+      `.dq-remaining`/`.dq-remaining-breakdown` 的任何代码（按任务要求排除在本轮范围外）。
+    - Verify（自测）：`pnpm run build`、`pnpm run typecheck`、`node test/run.mjs`（50/50）均 exit 0。
+      `systemctl restart dsh.service` 后 `is-active`=`active`，Playwright（Chromium r1228，走真实登录
+      cookie，会话「额度加载缓存优化」→「额度」tab）实测：
+      1. **真实鼠标 hover、不点击**：`page.mouse.move()` 到 `.dq-runway>summary` 中心后，
+         `document.querySelector('.dq-runway').open===true`，`.dq-runway-detail` 的
+         `getBoundingClientRect()` 是 `{w:110,h:90}`（非零，QA 报告的 0×0 复现问题已修复），
+         `textContent` 是完整的说明文字「按近 7 天日均 ¥2.09 估算（含无用量的日子；今天尚未过完）」；
+         `page.screenshot()` 截图 `/tmp/dsh-r43-2/01-hover-only.png` 可见浮层带真实边框/阴影/文字
+         悬浮在「预计可用」下方，与「余额明细」并排展示互不重叠。鼠标移开（`mouse.move(5,5)`）后
+         `details.open` 变回 `false`、浮层 rect 变回 `{w:0,h:0}`——hover-only 预览按预期自动收起。
+      2. **点击展开/收起**（Playwright `.click()` 会先把鼠标移到元素上再点，天然覆盖"先 hover 再点"
+         这个真实用户最常见的路径）：点一次后 `open===true`；之后把鼠标移开（`mouse.move(5,5)`），
+         `open` 仍为 `true`、浮层仍非零尺寸——手动展开不受鼠标离开影响，与"钉住直到用户再次操作"的
+         设计意图一致；再点一次后（点击瞬间鼠标又回到元素上，`open` 会因为 `runwayHovering` 短暂仍是
+         `true` 而暂时保持 `true`，这是预期行为——鼠标确实还悬停在上面）、随后移开鼠标，`open` 才变回
+         `false`、浮层归零——两次点击配合鼠标离开，构成一次完整的"展开→收起"闭环，未发现状态卡死或
+         意外常驻展开的情况。
+      3. **键盘 Tab + Enter/Space**：先 `.focus()` 到相邻的「余额明细」`<summary>`（同一个 `.dq-stat`
+         网格里紧邻的、真实可 Tab 到的元素，复刻修复轮次 1 报告里"从余额明细 Tab 一次落到预计可用"的
+         起点），按一次真实 `Tab` 键后 `document.activeElement.closest('.dq-runway')!==null`——焦点
+         正确落到「预计可用」`<summary>`；此时 `getComputedStyle` 读到的 `outline` 是
+         `rgb(65, 118, 230) solid 2px`、`outlineOffset` 是 `3px`，与修复轮次 1 记录的
+         `:focus-visible` 焦点环规格完全一致，未受控件化影响。按 `Enter` 后 `open` 变 `true`（浮层
+         `{w:110,h:90}`），再按一次 `Enter` 变回 `false`；单独测过 `Space` 键同样能展开/收起一轮，
+         两个键都按预期在受控组件下正常工作（因为 `<summary>` 对两个键的默认激活行为都合成同一个
+         `click` 事件，走的是同一条 `onClick` 逻辑）。
+      4. **触屏 tap**（390×844、`hasTouch:true`、`isMobile:true` 的独立 context，非复用桌面 context）：
+         `summary.tap()` 后 `open===true`、浮层 `{w:260,h:54}`（非零，390px 窄屏下的 `position:static`
+         版式，浮层撑高了自己所在的行而不是悬浮覆盖），再 `tap()` 一次变回 `false`；截图
+         `/tmp/dsh-r43-2/06-touch-tap-open.png` 可见浮层完整展示、未被截断或被相邻卡片遮挡。
+      5. **窄屏不遮挡**：390px 触屏 context 下 `document.documentElement.scrollWidth===clientWidth===390`
+         （无新增横向溢出），与修复轮次 1 已验证过的 620/480/390 三档窄屏防遮挡布局（`.dq-balance-grid
+         .dq-stat{flex:1 1 100%}` + 两个浮层在窄屏下切 `position:static`）没有冲突——这些 CSS 规则本轮
+         未改动，`.dq-runway` 控件化只影响 `open` 从哪里来，不影响窄屏断点的布局规则。
+         console error（排除已知 `favicon.ico` 401 基线噪音）0 条，pageerror 0 条（桌面 + 触屏两个
+         context 都检查过）。验证脚本：`/tmp/dsh-r43-2/verify.mjs`，截图目录 `/tmp/dsh-r43-2/`
+         （`01-hover-only.png`/`02-after-click-open.png`/`03-still-open-mouse-away.png`/
+         `04-after-toggle-close.png`/`05-keyboard-enter-open.png`/`06-touch-tap-open.png`/
+         `07-desktop-hover-full-card.png`，另有 `results.json` 保存全部实测数值）。
+    - 独立复核（Critic，最后一轮）：搭建独立的 React 18+esbuild 测试台，把当前 `dashboard.tsx`/
+      `styles.ts` 里 `.dq-runway` 的真实实现原样复制进去，用真实 Playwright 鼠标/键盘/触屏输入
+      （非 `dispatchEvent` 合成事件）驱动，独立复现"真实 hover 出现非零尺寸浮层"（成立）、"点击钉住/
+      再点收起"（成立，无卡死或错乱状态）、"键盘 Tab+Enter/Space 展开、`:focus-visible` 焦点环正常"
+      （成立）、"触屏 tap 展开/收起，且 `runwayHovering` 全程不被触屏误置为 `true`"（成立，证明
+      Pointer Events 选型确实避免了触屏下的常驻 hover 态）、"375px 窄屏下不与余额明细互相遮挡"（成立）。
+      唯一发现的偏差：Builder 关于"鼠标从 summary 移进悬浮浮层不会被误判为离开"这条论证，独立复核用
+      真实连续鼠标轨迹（含纯垂直、含斜向多组路径）反复复现均为**不成立**——因为 `.dq-runway-detail`
+      是 `position:absolute`，不撑大父级 `<details>` 的实际布局盒，summary 底部到浮层顶部之间那段
+      `top:calc(100%+6px)` 的空隙没有任何属于 `.dq-runway` 的可命中区域，连续移动的鼠标路径穿过这段
+      空隙时会先命中外部兄弟/祖先元素触发 `pointerleave`，浮层在鼠标真正到达之前就已收起——判定为
+      P2（代码注释的这句论证事实有误，可能误导后来维护者，但不影响验收标准本身：hover/点击/键盘/触屏
+      四条必需路径全部独立验证通过，且"移入浮层"从来不是验收标准要求的场景，只是 Builder 为解释实现
+      选择多写的一句话）。**结论：验收标准"桌面 hover 有可见反馈"这次真正兑现，判定该 feature 已修复，
+      不判定为阻塞。**
+    - **待办（不在本轮范围内，供后续新开任务）**：「余额明细」（`.dq-remaining`/`.dq-remaining-breakdown`，
+      轮次 29）用的是和本轮修复前「预计可用」完全相同的"CSS `:hover` 让未展开 `<details>` 子元素
+      `display:block`"技术，在当前 Chromium 版本下有同样的"hover 上去内容渲染尺寸为 0"的平台限制问题，
+      只是点击/键盘/触屏路径（真正 `open=true`）不受影响。建议后续单独开一个任务，把本轮同样的"受控
+      `<details>` + hover/toggle 双状态"方案套用到 `.dq-remaining` 上；不建议在这轮顺带改，任务范围已
+      明确要求本轮只动 `.dq-runway`。
+
+
 - （轮次 42）`docs(dashboard)`: 宽屏内容宽度机会评估——评估后判定不改。
   - Review / Critique：脑暴轮次 #7 最后一个候选。审计原文说 1440px 视口下
     `.dq-balance{max-width:860px;margin:0 auto}` 两侧各闲置约 290px，1024 与 1440 之间没有结构性差异，
