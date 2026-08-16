@@ -32,11 +32,13 @@ export function localizeApiError(message: string | undefined, t: Translate, fall
   if (message === '未配置 DEEPSEEK_API_KEY（可在「设置 → 模型」中填写）') return t('error.noApiKey')
   if (message === '解析余额响应失败') return t('error.balanceParse')
   if (message === '会话持久化服务不可用') return t('error.persistenceUnavailable')
+  if (message === '缺少会话 id') return t('error.missingSessionId')
   const mappings: Array<[RegExp, LocaleKey, string]> = [
     [/^读取 API Key 失败：(.*)$/, 'error.credentialRead', 'detail'],
     [/^请求余额接口失败：(.*)$/, 'error.balanceRequest', 'detail'],
     [/^余额接口返回错误（HTTP (\d+)）$/, 'error.balanceHttp', 'status'],
     [/^读取会话列表失败：(.*)$/, 'error.sessionList', 'detail'],
+    [/^读取会话日志失败：(.*)$/, 'error.sessionLogRead', 'detail'],
   ]
   for (const [pattern, key, field] of mappings) {
     const match = message.match(pattern)

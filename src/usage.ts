@@ -6,8 +6,8 @@
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
-import { USAGE_WINDOW_DAYS } from './contract.ts'
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, UsageCoverage, UsageData, UsageResponse, UsageSummary, UsageWindowDays } from './contract.ts'
+import { isValidSessionId, USAGE_WINDOW_DAYS } from './contract.ts'
+import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, SessionModelUsage, SessionUsageResponse, UsageCoverage, UsageData, UsageResponse, UsageSummary, UsageWindowDays } from './contract.ts'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from './context.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra, isPeak, pricingInfo } from './pricing.ts'
 
@@ -72,6 +72,21 @@ interface Bucket {
 }
 
 const emptyBucket = (): Bucket => ({ input: 0, output: 0, cache: 0, total: 0, cost: 0, calls: 0 })
+
+/** Cost is computed once per event (it depends on the model and on whether
+ *  the event landed in a peak window) and folded into every bucket that
+ *  needs it — shared by the account-wide replay and the single-session one. */
+function bump(map: Map<string, Bucket>, key: string, input: number, output: number, cache: number, cost: number): void {
+  const bucket = map.get(key) ?? emptyBucket()
+  bucket.input += input
+  bucket.output += output
+  bucket.cache += cache
+  // reasoningTokens is a subset of outputTokens; never double-count it.
+  bucket.total += input + output + cache
+  bucket.cost += cost
+  bucket.calls += 1
+  map.set(key, bucket)
+}
 
 type OverallBucket = Bucket & { reasoning: number; cacheSavings: number }
 const emptyOverall = (): OverallBucket => ({ ...emptyBucket(), reasoning: 0, cacheSavings: 0 })
@@ -229,20 +244,6 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
     modelHours: new Map(),
     sessions: [],
   }))
-
-  /** Cost is computed once per event (it depends on the model and on whether
-   *  the event landed in a peak window) and folded into every bucket. */
-  const bump = (map: Map<string, Bucket>, key: string, input: number, output: number, cache: number, cost: number): void => {
-    const bucket = map.get(key) ?? emptyBucket()
-    bucket.input += input
-    bucket.output += output
-    bucket.cache += cache
-    // reasoningTokens is a subset of outputTokens; never double-count it.
-    bucket.total += input + output + cache
-    bucket.cost += cost
-    bucket.calls += 1
-    map.set(key, bucket)
-  }
 
   const bumpOverall = (
     bucket: OverallBucket,
@@ -458,6 +459,82 @@ export async function fetchUsage(persistence: SessionPersistenceFace | undefined
         calls: overall.calls,
         cacheSavings: overall.cacheSavings,
       },
+    },
+  }
+}
+
+/**
+ * Usage for exactly one session — the 「额度」tab's own conversation, as
+ * opposed to `fetchUsage`'s account-wide replay. Reads a single session log
+ * (not every session on disk), so it is cheap enough to call on every tab
+ * mount without a TTL memo; the caller is expected to re-fetch whenever the
+ * session id it cares about changes.
+ */
+export async function fetchSessionUsage(persistence: SessionPersistenceFace | undefined, sessionId: string): Promise<SessionUsageResponse> {
+  if (persistence === undefined) return { ok: false, error: '会话持久化服务不可用' }
+  if (typeof sessionId !== 'string' || sessionId === '') return { ok: false, error: '缺少会话 id' }
+  // Defense in depth: src/index.ts already rejects a malformed `id` before
+  // this function is ever called (see SESSION_ID_PATTERN in contract.ts),
+  // but this function is also unit-tested and reachable directly, so the
+  // same check is repeated here rather than trusted to the one caller.
+  if (!isValidSessionId(sessionId)) return { ok: false, error: '会话 id 格式不合法' }
+
+  let events: SessionEventFace[] | undefined
+  try {
+    const result = await persistence.readFrom(sessionId, 0)
+    events = result.events
+  } catch (err) {
+    return { ok: false, error: `读取会话日志失败：${errorMessage(err)}` }
+  }
+
+  const modelTotals = new Map<string, Bucket>()
+  let total = 0
+  let cost = 0
+  let calls = 0
+  let firstActive: number | null = null
+  let lastActive: number | null = null
+
+  addUsageEvent(events, (time, input, output, cache, _reasoning, provider, model) => {
+    const modelKey = `${provider}/${model}`
+    const eventCost = costOf(time, model, input, cache, output)
+    const eventTotal = input + output + cache
+    bump(modelTotals, modelKey, input, output, cache, eventCost)
+    total += eventTotal
+    cost += eventCost
+    calls += 1
+    if (firstActive === null || time < firstActive) firstActive = time
+    if (lastActive === null || time > lastActive) lastActive = time
+  })
+
+  const models: SessionModelUsage[] = [...modelTotals.entries()]
+    .map(([modelKey, bucket]): SessionModelUsage => {
+      const slash = modelKey.indexOf('/')
+      const provider = slash < 0 ? '' : modelKey.slice(0, slash)
+      const model = slash < 0 ? modelKey : modelKey.slice(slash + 1)
+      return {
+        provider,
+        model,
+        input: bucket.input,
+        output: bucket.output,
+        cache: bucket.cache,
+        total: bucket.total,
+        cost: bucket.cost,
+        calls: bucket.calls,
+      }
+    })
+    .sort((a, b) => b.cost - a.cost)
+
+  return {
+    ok: true,
+    data: {
+      sessionId,
+      title: titleOf(events, sessionId),
+      total,
+      cost,
+      calls,
+      firstActive,
+      lastActive,
+      models,
     },
   }
 }

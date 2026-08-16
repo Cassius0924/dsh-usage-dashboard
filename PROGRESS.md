@@ -93,6 +93,190 @@
 
 ## 已完成（续）
 
+- （轮次 45）`feat(dashboard)`: 新增当前会话消耗卡片。
+  - 背景（用户直接反馈，非排版 backlog）：用户指出「额度」tab 挂在具体会话内部、和「对话」「对话轨迹」同层级，
+    但 tab 内全部内容都是账户全局维度（累计余额、全部会话用量、模型/会话排行），缺一张这个具体会话专属的
+    消耗卡片。前置调研（见任务附带说明）已确认：`conversation.view` 是 session-scoped slot，宿主向渲染函数
+    注入 `sessionId`；现有 `fetchUsage()` 的 `SessionCost` 只保留全局 Top-6，且没有按模型拆分/起止时间，
+    不能直接复用，需要新增一条独立的单会话查询链路。
+  - Act（host 端，数据流新增）：
+    1. `src/contract.ts` 新增 `SessionModelUsage`（`ModelUsage` 的字段形状减去只在多会话场景下才有意义的
+       `daily`/`hourly` 序列）、`SessionUsageData`（`sessionId`/`title`/`total`/`cost`/`calls`/
+       `firstActive`/`lastActive`/`models`）、`SessionUsageResponse`。
+    2. `src/usage.ts` 把 `fetchUsage()` 内部原本是闭包的 `bump()` 提到模块作用域（纯函数，未捕获任何外部
+       状态，提取不改变行为），新增 `fetchSessionUsage(persistence, sessionId)`：只对这一个 `sessionId`
+       调用一次 `persistence.readFrom(id, 0)`，复用 `addUsageEvent`/`costOf`/`titleOf`/`bump`，按模型分桶
+       算出总量/费用/调用次数与首尾活跃时间；`persistence` 为空、`sessionId` 为空串、`readFrom` 抛异常
+       三种情况都被 catch 住返回 `{ok:false,error}`（中文错误文案，风格与 `fetchBalance`/`fetchUsage`
+       一致），不会有未捕获异常冒出。会话没有任何用量时返回 `calls:0/total:0/cost:0/firstActive:null/
+       lastActive:null/models:[]`，这是「空态」而不是错误，由 client 侧区分处理。
+    3. `src/index.ts` 新增路由 `GET /api/dsh-usage-dashboard/session?id=<sessionId>`，挂在同一个
+       `/api/dsh-usage-dashboard` 前缀 handler 里，因此自动过 `isTrustedApiRequest(req)`（和 `balance`/
+       `usage` 两个既有分支共享同一次鉴权检查，不是另开一条鉴权路径，不会漏）。`id` 缺失/空串返回明确的
+       `400`（`{ok:false,error:'缺少会话 id'}`）；`id` 存在但读取失败（如会话不存在）返回 `200` +
+       `{ok:false,error:...}`，与 `balance`/`usage` 两个既有接口"200 + ok 标记错误"的既有风格保持一致，
+       只有"输入参数本身不合法"这一类才用 4xx，减少 client 侧要处理的响应形状种类。**这个接口刻意不接入
+       `memoize()` TTL 缓存**——单会话读盘成本低（只读一个会话日志，不是全量重放），而且这份数据要跟随
+       会话实时变化，套 5 分钟 TTL 反而会让用户在会话内新发一条消息后刷新页面看到过期数字。
+  - Act（client 端消费）：
+    1. `src/client/api.ts` 新增 `fetchSessionUsage(sessionId, force?)`：**不接入 `createCache`/localStorage
+       持久化**（`cache.ts` 那套是为账户全局数据设计的 TTL + 跨刷新持久化，此处见 DESIGN_NOTES 新增决策
+       记录），只用一个 `Map<sessionId, Promise>` 做内存级 in-flight 去重（同一 session 短时间内的并发
+       请求会合并成一次网络请求），`force=true`（如刷新按钮触发）总是发起新请求，不查/不写这个去重表。
+       LEARNINGS 记过的坑（"持久化缓存必须校验结构，UI 每新读一个顶层字段要在 api.ts 校验里补一行"）
+       在这里天然不适用——因为这份数据压根不写 localStorage，没有"旧结构缓存把新代码读挂"的风险面。
+    2. `src/client/index.tsx`：`conversation.view` slot 渲染函数的手写最小结构类型从 `{ t: Translate }`
+       扩成 `{ t: Translate; sessionId?: string }`（延续 `context.ts` 已定的"手写最小结构类型、不耦合
+       宿主完整类型"风格），解构出 `sessionId` 传给 `<BalanceDashboard sessionId={sessionId} />`。可选
+       是防御性的：运行时应总有值，但 `sessionId` 缺失时新卡片直接不渲染、不报错（`BalanceDashboard`
+       内用 `props.sessionId !== undefined && props.sessionId !== ''` 整体门控这张卡片）。
+    3. `src/client/dashboard.tsx`：新增 `sessionUsage`/`loadingSessionUsage`/`sessionUsageError` 三个
+       state，`sessionUsageIdRef` 守卫"会话切换后旧请求的结果不能覆盖新会话的数字"；`loadSessionUsage(id,
+       force)` 是 stale-while-revalidate——成功就换新数据，失败且已有旧数据就保留旧数据不清空（只有
+       `sessionUsage===null` 且报错时才展示错误态），与站内既有"刷新失败保留旧数据+提示"精神一致。挂载/
+       会话切换由独立的 `useEffect([props.sessionId])` 触发（`force=false`，走 in-flight 去重）；顶部
+       现有的「刷新」按钮点击时（`load(true)`）额外 fire `loadSessionUsage(id, true)`，让一个刷新按钮
+       覆盖三个数据源，不需要给这张卡片单独配一个刷新控件。
+  - Act（UI 设计，覆盖信息层级/加载/空/错误四态）：新卡片标题「当前会话消耗（费用为估算）」，明确写出
+    「当前会话」范围限定，避免和下方「消耗概览（费用为估算）」（账户全局口径）产生混淆——两个标题现在
+    在同一屏内能直接对照阅读。位置放在账户余额卡之后、消耗概览之前（原 9 张卡变 10 张）：这是打开这个
+    tab 时上下文最直接相关的数字，且它是与账户全局层级 1-3 正交的另一个维度，因此判定给
+    `.dq-card--primary` 主卡片权重（主卡从 3 张增到 4 张），`styles.ts` 里轮次 36 建立、轮次 39/40 更新过
+    的"主卡片清单"注释同步改写，说明这次升级的理由。内容三段：① 复用 `Stat`/`.dq-balance-grid`（和账户
+    余额卡同一视觉语言，不是消耗概览卡的 22px hero 数字档位——设计要求里明确说了这里要复用 `.dq-stat`
+    而不是发明新字号）展示本会话费用/tokens/调用次数三个数字；② 复用「模型成本排行榜」的
+    `.dq-rank`/`.dq-rank-track`/`.dq-rank-fill`/`MODEL_COLORS` 展示手法，按费用降序列出这个会话用过的
+    每个模型的占比条 + tokens/调用/输入输出缓存明细（哪怕只用了一个模型也展示，与排行榜卡片同样的处理
+    方式，不特殊隐藏，逻辑更简单也更一致）；③ 活跃时间范围，复用 `CoverageDiagnostics` 已经在用的
+    `Intl.DateTimeFormat`（`Asia/Shanghai`）格式化手法，`firstActive===lastActive`（只调用过一次）时
+    收窄成单个时间点而不是"同一时刻 – 同一时刻"这种奇怪的区间写法。四态：加载态新增 `SessionUsageSkeleton`
+    复用 `Skel`/`.dq-balance-grid` 骨架屏语言；空态（`calls===0`）渲染 `t('sessionUsage.empty')`；错误态
+    （有错误且没有任何旧数据可展示）新增 `.dq-empty--error` 修饰类（`.dq-empty` 基线布局 + 错误色，源码
+    顺序仿照 `.dq-stat-value--ok/--bad/--warn` 已有的"基线+同特异度修饰符"手法，声明在 `.dq-empty` 之后）；
+    有旧数据时刷新失败不清空卡片。中英文各新增 6 个 `sessionUsage.*` 翻译键 + 2 个新增错误码翻译键
+    （`error.sessionLogRead`/`error.missingSessionId`），`i18n.tsx` 的 `localizeApiError()` 补上两条新的
+    host 错误串→翻译键映射（含一条正则规则），使新增的两类 host 错误也能被翻译成用户当前语言，不会在
+    英文界面下露出裸中文错误串。未新增任何交互控件（占比条沿用既有 `role="img"` 说明性语义，不是可点击
+    元素），因此键盘可达性/`:focus-visible`/`prefers-reduced-motion` 全部原样继承既有规则，没有需要
+    额外处理的新交互面。
+  - Verify（自测）：`pnpm run typecheck`、`pnpm run build`、`node test/run.mjs` 均 exit 0（48/48，较改动前
+    新增 4 条 `fetchSessionUsage` 单测：多模型聚合+首尾时间+按费用降序、零用量会话的干净空结果且不调用
+    `list()`、无标题会话回退短 id、`persistence` 缺失/`sessionId` 缺失/`readFrom` 抛错三类错误文案）。
+    真机验证（`systemctl restart dsh.service` 后 `is-active`=`active`）：
+    1. 鉴权：`curl` 不带 `dsh_session` cookie 请求 `GET /api/dsh-usage-dashboard/session?id=...` 返回
+       `401 {"error":"unauthorized"}`，与 `balance`/`usage` 两个既有接口在同样无 cookie 条件下的行为
+       完全一致（DSH 自身的登录门 + 本插件的 `isTrustedApiRequest` 双层防线均在新路由上生效，不是新开的
+       未受保护端点）；带合法 cookie 请求同一路径返回 `200` 且数据正确。
+    2. 输入校验：`?id=` 缺失或空串返回 `400 {"ok":false,"error":"缺少会话 id"}`；不存在的 `id`（
+       `session-does-not-exist`）返回 `200 {"ok":false,"error":"读取会话日志失败：..."}`（host 侧
+       `readFrom` 抛错被 catch 住，不是裸异常/500）。
+    3. 数据正确性：先从既有 `usage` 接口拿到全局会话排行里的真实 sessionId（如
+       `session-484a1c14-c6fe-4d6a-abfd-a2d8d2f664d5`，`cost=11.382923200000002`/`calls=302`），再打新
+       `session` 接口，两边数字逐位一致；对另一个真实会话
+       `session-214fb111-28ce-4d3a-937a-d5b37ec6120c`（`额度加载缓存优化`，`cost=0.5411655999999998`/
+       `calls=62`）同样比对一致，且 `firstActive`/`lastActive` 用 Python 换算北京时间与后续浏览器截图里
+       卡片显示的「活跃时间 2026/8/15 01:22 – 2026/8/15 01:38」逐分钟吻合。找到一个真实存在、`calls=0`
+       的会话（`session-4393bd5b-ec49-4906-97cf-3548ae1dee52`，日志里从未出现 `assistant/message`），
+       接口返回 `{calls:0,total:0,cost:0,firstActive:null,lastActive:null,models:[]}`，与 client 侧
+       `data.calls===0→渲染空态`的判定条件精确对应（这个具体会话在当前登录会话可见的侧栏列表中不可达，
+       独立 QA 后续在浏览器里补拍到了渲染截图，见下方独立 QA 记录）。
+    4. 真实浏览器（Playwright + 本机已装的 Chromium 1228，走真实登录 cookie，非 mock）：打开会话
+       「额度加载缓存优化」→点「额度」/`Usage` tab，用网络响应拦截直接抓到 `GET .../session?id=
+       session-214fb111-...` 的真实响应体，与卡片渲染的 DOM 文本逐项核对一致（¥0.54 / 354.9万 tokens /
+       62 次调用 / deepseek-v4-pro 100.0% / 输入 8.5万 输出 3.3万 缓存 343.0万）；另一次打开会话「Hi」，
+       网络拦截到的真实 sessionId 与卡片数字同样吻合，且这次命中了 `firstActive===lastActive`（只调用
+       过一次）的分支，卡片正确显示单个时间点「活跃时间 2026/8/16 01:37」而不是奇怪的区间写法，验证了
+       这条专门写的边界处理。卡片顺序确认为 账户余额→当前会话消耗→消耗概览→用量趋势→用量热力图→
+       高峰/闲时→缓存命中→模型排行→会话排行→设置（10 张，较改动前 9 张多 1 张），`.dq-card--primary`
+       主卡从 3 张增到 4 张（余额/当前会话消耗/消耗概览/用量趋势）。实测还意外验证了一个设计收益：账户
+       全局的「消耗概览」「用量趋势」两张卡在首次同步期间仍显示骨架屏（约需数秒重放全部会话日志），
+       但「当前会话消耗」卡因为只读一个会话日志，先于它们完成加载显示出真实数字——截图
+       `/tmp/dsh-r45/21-top-viewport.png` 直接拍到了这个"账户全局卡骨架屏、会话卡已出数字"的中间状态，
+       证明"这条链路不跟随/不阻塞在账户级 5 分钟 TTL 聚合之后"这一条设计意图确实在真实网络时序下成立，
+       不只是理论上不冲突。620px 窄屏下 `document.documentElement.scrollWidth>clientWidth` 为
+       `false`（无新增横向溢出），三个 `Stat` 与模型占比行在 620px 下自然换行、无重叠无截断
+       （截图 `/tmp/dsh-r45/12-narrow-620.png`）。中英文两态均验证过（英文标题「Current session spend
+       (estimated)」/「This session」/「Session tokens」/「Session calls」/「Active {range}」均正确
+       渲染，未见中文残留或占位符错位，与 `i18n.test.ts` 的键集合/占位符一致性检查结果吻合）。console
+       全程只出现登录流程自带的已知噪音（`favicon`/`401`），0 条 `pageerror`。截图证据：
+       `/tmp/dsh-r45/11-session-card.png`（卡片单独截图）、`/tmp/dsh-r45/10-full-page.png`（整页含会话
+       排行卡对照）、`/tmp/dsh-r45/21-top-viewport.png`（首屏骨架屏与会话卡数据先行加载的实测证据）、
+       `/tmp/dsh-r45/12-narrow-620.png`（620px 窄屏）、`/tmp/dsh-r45/30-hi-session-card.png`（单次调用/
+       单时间点边界场景）。
+    5. **本轮开发期间发现本仓库正被另一个并发 session 同时改动**（`chart-focus.ts`/`charts.tsx`/
+       `PROGRESS.md`/`TODO.md`/`LEARNINGS.md` 等文件在本轮工作过程中出现了非本轮改动的变更，对应轮次
+       43「修复预计可用 hover 无内容」与轮次 44「多选模型柱状图改堆叠」，其验证脚本进程也在系统里被
+       实测观察到），且共享同一个 `dsh.service`/浏览器登录态/侧栏最近会话排序，一度导致本轮某个探索性
+       验证脚本因为侧栏顺序被对方并发操作实时改变而点错了会话（点击时目标文本已被重排到别处）。已确认
+       两边改动的文件区域没有重叠冲突（本轮只碰 `dashboard.tsx` 里余额卡与消耗概览卡之间的新增区块，
+       轮次 43 碰的是同一文件里更早的「预计可用」`.dq-runway` 区块），`git status`/最终三门结果显示两者
+       合并后仍然全绿；但这类共享开发机上的多 session 并发验证脆弱性值得记录，见 LEARNINGS 新增条目。
+    - 独立 QA：curl 独立复测鉴权分层——未登录 401、登录但 Origin/Host 不匹配 403（`isTrustedApiRequest`
+      与 DSH 登录门是两道独立防线）、合法 cookie+缺失 id 400、`../../etc/passwd`/`..`/含空字节/129 字符
+      超长 id 均 400 且无崩溃、合法字符集但不存在的 id 走 200+ok:false 的"读取失败"分支而非误判为格式
+      错误；真实会话 `session-484a1c14-...` 数据与 usage 接口会话排行 Top1 数字（`total=131513218,
+      cost=11.382923200000002, calls=302`）逐位一致。浏览器里找到另一个真实存在、`calls=0` 的会话
+      （`session-4393bd5b-...`）并通过网络响应拦截验证空态渲染路径，卡片显示清晰空态文案，无
+      NaN/undefined/null（截图 `/tmp/dsh-ui-audit/r45-09-empty-state-card.png`）。卡片位置/标题区分、
+      中英文、620px 无溢出、既有余额/消耗概览等账户全局卡片数据未受影响，均复核通过。console 全程仅
+      历史基线噪音，pageerror 0。
+  - **修复轮 1（独立 Critic 发现的 P1 + 顺带处理的一个 P2）**：
+    - P1（必须修）：`fetchSessionUsage(persistence, sessionId)` 原本只做了"非空字符串"检查就把
+      `sessionId` 传给 `persistence.readFrom(sessionId, 0)`。Critic 指出这是本仓库**第一次**把浏览器
+      可完全控制的字符串（`/session` 路由的 `?id=` 查询参数，任何能打这个同源接口的请求都能任意构造，
+      不像 `fetchUsage()` 里的 sessionId 全部来自 `persistence.list()` 这个 host 自己枚举出的可信值）
+      直接喂给 `readFrom`；`SessionPersistenceFace`/`readFrom` 的真实实现在本仓库之外的 DSH host
+      运行时，看不到源码，无法确认它内部是否会把 `id` 当不透明 key 处理，还是可能拼接进文件路径（若是
+      后者，`../` 这类构造的 `id` 理论上有路径穿越风险）。查过本仓库对合法 session id 有没有已知的
+      精确格式约束（`src/contract.ts` 的 `SessionCost.id`、真实观测到的 id 如
+      `session-484a1c14-c6fe-4d6a-abfd-a2d8d2f664d5`，以及测试夹具里 `session-a`/`abcdefgh-1234`/
+      `windowed-session` 这类任意字符串）——没有找到任何文档化的精确格式契约，因此按 Critic 建议的
+      退而求其次方案：在 `src/contract.ts` 新增 `SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/` 与
+      `isValidSessionId()`，只放行字母数字加 `-`/`_` 的安全字符集（长度上限 128），天然拒绝路径分隔符
+      `/`、`\`、`..`、null 字节、空格等一切不在白名单里的字符。校验挂了两处（"越早挡越好"）：
+      ① `src/index.ts` 的 `/session` 路由入口，`?id=` 缺失/空串/格式不合法三种情况统一在进 `fetchSessionUsage`
+      之前就拦下，返回 `400 {ok:false,error:...}`（格式不合法用新文案「会话 id 格式不合法」，与既有的
+      「缺少会话 id」区分）；② `src/usage.ts` 的 `fetchSessionUsage()` 入口同样重复一次校验（防御性
+      兜底——这个函数本身也被单测直接调用、不能只依赖调用方替它把关）。`src/client/api.ts` 未改动：
+      client 侧的 `fetchSessionUsage()` 早已只从 `props.sessionId`（host 注入的真实会话 id）取值，
+      不接受任意用户输入，不是这个漏洞的攻击面，本轮改动全部在 host 端输入边界上。新增单测两组：
+      `isValidSessionId` 的合法/非法用例表（覆盖真实 id 形状 + `../../etc/passwd`/`foo/bar`/`foo\bar`/
+      `/etc/passwd`/`session/../../secret`/`%2e%2e%2f`/null 字节/超长 129 字符等危险输入）、以及
+      `fetchSessionUsage` 对格式不合法 id 直接返回错误、不触碰 `persistence` 的行为测试。
+    - P2（评估后判定不改）：Critic 建议评估 `/session` 路由对"输入不合法"统一返回 4xx 是否该改成和
+      `balance`/`usage` 两个既有端点一致的"永远 200 + `{ok:false,error}`"风格。评估结论是**不改**：
+      这条 P2 建议本身与同一份反馈里的 P1 强制要求（"校验失败时要返回清晰的 4xx 错误"）直接冲突——如果
+      把所有输入校验失败都统一成 200，新加的 sessionId 格式校验失败也得跟着变成 200，等于取消了 P1 明确
+      要求的 4xx 行为；而现状（`id` 本身不合法→4xx，`id` 合法但下游读取失败如会话不存在→200+ok:false）
+      恰好是"输入参数问题用 4xx、下游执行失败用 200"这一条清晰规则的两个分支，本身内部是一致的，只是
+      跟 `balance`/`usage`（这两个接口没有可能出错的必需查询参数）没有直接可比性。保留原状并在此记录
+      评估过程，不引入改动。
+    - P2（顺带处理）：`.dq-session-sub` 原本只在 `.dq-session{gap:5px}` 的 flex 容器里用过（自身无
+      margin，靠父级 gap 控制间距），本轮「当前会话消耗」卡片新增了第二种用法——包成裸 `<p>` 元素、
+      没有父级 gap 兜底，实际间距变成浏览器默认的隐式 `<p>` margin，不符合本项目"间距必须显式声明"的
+      一贯做法。在 `src/client/styles.ts` 加了一条 `p.dq-session-sub{margin:8px 0}`（用标签选择器
+      `p.` 限定作用域，只影响这处新的 `<p>` 用法，不影响 `.dq-session` 内已有的 `<div>` 用法），并加
+      注释说明原因。
+    - Verify：`pnpm run build` / `pnpm run typecheck` / `node test/run.mjs` 均 exit 0（50/50，较修复前
+      新增 2 条：`isValidSessionId` 白名单单测、`fetchSessionUsage` 拒绝非法 id 且不触碰 `persistence`
+      单测）。真机验证（`systemctl restart dsh.service` 后 `is-active`=`active`，本轮同样观察到系统里
+      有其它并发 session 的重启记录，`journalctl` 未见任何本轮改动引发的错误日志）：
+      1. 用真实登录 cookie（`POST /login` 拿 `dsh_session`）curl 合法 id
+         `session-484a1c14-c6fe-4d6a-abfd-a2d8d2f664d5`（先从 `usage` 接口的会话排行里取到的真实值）
+         → `200`，数据与 `usage` 接口里的同一会话数字一致。
+      2. 缺失/空 `?id=` → `400 {"ok":false,"error":"缺少会话 id"}`（行为不变）。
+      3. 危险输入全部拦下、均为 `400 {"ok":false,"error":"会话 id 格式不合法"}`，未出现任何 500 或裸异常：
+         `../../etc/passwd`、`..`、`foo/bar`、`foo\bar`、`/etc/passwd`、`session/../../secret`、
+         URL 编码后的 `%2e%2e%2f`、含真实 null 字节的 `a%00b`、含空格的 `session id`、超长 129 字符 id。
+         合法字符集内但不存在的 id（如单字符 `a`）按预期走到 `200 {"ok":false,"error":"读取会话日志
+         失败：session \"a\" not found"}` 这条既有的"下游读取失败"分支，未被误伤。
+      4. 真实浏览器（Playwright，Chromium r1228，走真实登录 cookie 打开会话「额度加载缓存优化」→
+         「额度」tab）：整页截图确认「当前会话消耗」卡片渲染正常（¥0.54 / 354.9万 tokens / 62 次调用 /
+         deepseek-v4-pro 100.0%，与 curl 拿到的真实数据一致），`p.dq-session-sub` 新 margin 生效后
+         「活跃时间」行与上方数字区块、下方模型占比条之间距都是明确声明的间距，不是浏览器默认 `<p>`
+         间距；`CONSOLE_ISSUES=0`（0 条 console error/warning，0 条 pageerror）。
+
+
 - （轮次 44）`feat(charts)`: 多选模型柱状图改堆叠。
   - Review / Critique：用户直接反馈——「用量趋势」卡模型筛选下拉多选 2+ 个模型时，`charts.tsx` 的
     `GroupedBars` 把每个时间点渲染成并列分组柱（每模型一根独立柱子，`.dq-bar-group{display:flex;

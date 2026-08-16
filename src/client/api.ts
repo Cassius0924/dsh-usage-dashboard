@@ -7,7 +7,7 @@
  */
 import { createCache } from './cache.ts'
 import { USAGE_WINDOW_DAYS } from '../contract.ts'
-import type { BalanceResponse, UsageResponse } from '../contract.ts'
+import type { BalanceResponse, SessionUsageResponse, UsageResponse } from '../contract.ts'
 
 /** Mirror the host memos: balance 60s, usage 5min. */
 const BALANCE_TTL_MS = 60_000
@@ -124,4 +124,34 @@ export async function fetchUsage(force = false): Promise<UsageResponse> {
     return usageInflight
   }
   return task
+}
+
+/**
+ * Usage for exactly one session — the 「额度」tab's own conversation. Unlike
+ * balance/usage this is deliberately **not** persisted to localStorage or
+ * given a TTL cache: it is scoped to whichever session happens to be open,
+ * would otherwise mean caching one entry per session for data that is only
+ * ever read once (on tab mount) and must reflect that session's live state
+ * rather than a stale snapshot. The only dedup is in-flight: two calls for
+ * the same session id that overlap in time join a single request instead of
+ * firing twice (covers React effects re-running before the first fetch lands).
+ * `force` (the dashboard's refresh button) always fires its own request.
+ */
+const sessionUsageInflight = new Map<string, Promise<SessionUsageResponse>>()
+
+export async function fetchSessionUsage(sessionId: string, force = false): Promise<SessionUsageResponse> {
+  if (typeof sessionId !== 'string' || sessionId === '') {
+    return { ok: false, error: '缺少会话 id' }
+  }
+  if (!force) {
+    const inflight = sessionUsageInflight.get(sessionId)
+    if (inflight !== undefined) return inflight
+  }
+  const task = getJson<SessionUsageResponse>(`/api/dsh-usage-dashboard/session?id=${encodeURIComponent(sessionId)}`, 'no-store')
+  if (force) return task
+  const tracked = task.finally(() => {
+    if (sessionUsageInflight.get(sessionId) === tracked) sessionUsageInflight.delete(sessionId)
+  })
+  sessionUsageInflight.set(sessionId, tracked)
+  return tracked
 }

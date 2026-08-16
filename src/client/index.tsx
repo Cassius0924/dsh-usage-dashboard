@@ -55,9 +55,16 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('conversation.view', () => ctx.slots.register(
     { name: 'conversation.view', id: 'balance', order: 20, locale: NS, label: () => t('nav.quota') },
-    ({ t: slotT }: { t: Translate }) => (
+    // `conversation.view` is a session-scoped slot, so the host injects its
+    // standard session props (including `sessionId`) alongside `t` — this
+    // plugin only destructures the two fields it needs, per the existing
+    // "hand-write the minimal structural type" convention (see context.ts).
+    // `sessionId` is typed optional defensively even though the host is
+    // expected to always supply it: BalanceDashboard renders the current-
+    // session card only when it actually has one, never throws either way.
+    ({ t: slotT, sessionId }: { t: Translate; sessionId?: string }) => (
       <LocaleProvider t={slotT}>
-        <ErrorBoundary t={slotT}><BalanceDashboard /></ErrorBoundary>
+        <ErrorBoundary t={slotT}><BalanceDashboard sessionId={sessionId} /></ErrorBoundary>
       </LocaleProvider>
     ),
   ))

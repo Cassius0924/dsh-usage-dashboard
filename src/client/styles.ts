@@ -42,10 +42,14 @@ export const css = `
 .dq-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
 .dq-card-head .dq-card-title{margin:0}
 .dq-card-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;min-width:0}
-/* 主卡片（余额/消耗概览/DSH 用量）视觉权重高于次级分析卡片与导航类卡片：只调排版属性——内边距、
-   标题字号字重与取色、边框深浅——不引入新配色体系。两条规则与上面的基础规则同为单类选择器且源码顺序
-   更靠后，天然覆盖，不需要 !important。次级分析卡片（高峰闲时/缓存命中/模型排行/会话排行）与导航类
-   卡片（设置，含轮次 39 并入的官方平台链接）都不加这个修饰类，维持原有 .dq-card 基线，形成两档权重。 */
+/* 主卡片（余额/当前会话消耗/消耗概览/用量趋势，轮次 45 新增「当前会话消耗」）视觉权重高于次级分析
+   卡片与导航类卡片：只调排版属性——内边距、标题字号字重与取色、边框深浅——不引入新配色体系。两条规则
+   与上面的基础规则同为单类选择器且源码顺序更靠后，天然覆盖，不需要 !important。次级分析卡片（用量
+   热力图/高峰闲时/缓存命中/模型排行/会话排行）与导航类卡片（设置，含轮次 39 并入的官方平台链接）都不加
+   这个修饰类，维持原有 .dq-card 基线，形成两档权重。「当前会话消耗」升级为主卡片的理由：它和余额一样是
+   打开这个「额度」tab 时上下文最直接相关的数字（这个 tab 挂在具体会话内部，见 DESIGN_NOTES「信息层级」），
+   不属于原有账户全局层级 1-3 的任何一级，而是与之正交的另一个维度，但同样是首屏必读，因此同样给
+   primary 权重，不新开第三档。 */
 .dq-card--primary{padding:20px;border-color:var(--dsw-alias-border-l2,rgba(0,0,0,.12))}
 .dq-card--primary .dq-card-title{font-size:13px;font-weight:700;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-window-switch{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.08))}
@@ -204,6 +208,11 @@ export const css = `
 .dq-session-track{height:6px;border-radius:999px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.12));overflow:hidden}
 .dq-session-fill{height:100%;border-radius:999px;background:var(--dsw-alias-state-business-primary,#4176e6);transition:width .35s cubic-bezier(.22,1,.36,1)}
 .dq-session-sub{font-size:12px;color:var(--dsw-alias-label-secondary,#59636e);font-variant-numeric:tabular-nums;line-height:1.5}
+/* The 「当前会话消耗」card uses this class on a bare <p> (no flex-gap parent
+   to lean on, unlike the .dq-session usage above), so it needs its own
+   explicit spacing rather than falling back to the browser's implicit <p>
+   margin — this project always declares spacing explicitly. */
+p.dq-session-sub{margin:8px 0}
 .dq-session-foot{margin:12px 0 0;font-size:12px;color:var(--dsw-alias-label-tertiary,#59636e)}
 .dq-rank{display:flex;flex-direction:column;gap:14px}
 .dq-rank-row{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -313,6 +322,12 @@ export const css = `
 .dq-warn{color:var(--dsw-alias-state-warning-primary,#9a6700)}
 .dq-crash{margin:10px 0 14px;padding:10px 12px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.10));border-radius:8px;font-size:12px;line-height:1.5;color:var(--dsw-alias-state-error-primary,#cf222e);white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .dq-empty{color:var(--dsw-alias-label-secondary,#59636e);font-size:12px;line-height:1.6;padding:6px 0}
+/* Error-state modifier for a card body that has nothing else to show (mirrors the .dq-stat-value--ok/
+   --bad/--warn pattern: same layout as .dq-empty, declared after it so this color wins at equal
+   specificity). Used by the current-session card when its own fetch failed and there is no prior
+   data to fall back to — the status-row .dq-error/.dq-warn spans are for the account-wide balance/
+   usage fetch, this is the per-card equivalent. */
+.dq-empty--error{color:var(--dsw-alias-state-error-primary,#cf222e)}
 .dq-skel{background:linear-gradient(90deg,rgba(125,135,155,.10) 25%,rgba(125,135,155,.20) 37%,rgba(125,135,155,.10) 63%);background-size:400% 100%;border-radius:5px;animation:dq-shimmer 1.5s ease-in-out infinite}
 .dq-stat .dq-skel+.dq-skel{margin-top:6px}
 .dq-skel-bars{display:flex;align-items:flex-end;gap:2px;width:100%;height:120px;margin-top:10px}

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from '../src/context.ts'
+import { isValidSessionId } from '../src/contract.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra } from '../src/pricing.ts'
-import { fetchBalance, fetchUsage } from '../src/usage.ts'
+import { fetchBalance, fetchSessionUsage, fetchUsage } from '../src/usage.ts'
 
 const pad2 = (value: number): string => String(value).padStart(2, '0')
 const dayKey = (time: number): string => {
@@ -278,5 +279,163 @@ test('balance fetch handles HTTP and malformed-JSON failures', async t => {
   assert.deepEqual(await fetchBalance(credentials), {
     ok: false,
     error: '解析余额响应失败',
+  })
+})
+
+test('session usage folds one session into per-model totals with a first/last active range', async () => {
+  const first = localTime(20, 9)
+  const last = localTime(20, 15)
+  const events: SessionEventFace[] = [
+    { type: 'session/title', data: { title: '会话标题' } },
+    { type: 'request/header', data: { header: { config: { provider: 'deepseek', model: 'deepseek-v4-pro' } } } },
+    {
+      type: 'assistant/message',
+      time: first,
+      data: { usage: { inputTokens: 1_000, outputTokens: 200, cacheReadTokens: 500 } },
+    },
+    { type: 'request/header', data: { header: { config: { provider: 'deepseek', model: 'deepseek-v4-flash' } } } },
+    {
+      type: 'assistant/message',
+      time: last,
+      data: { usage: { inputTokens: 4_000, outputTokens: 800, cacheReadTokens: 2_000 } },
+    },
+  ]
+  const persistence: SessionPersistenceFace = {
+    list: async () => { throw new Error('fetchSessionUsage must not call list()') },
+    readFrom: async (id, fromSeq) => {
+      assert.equal(id, 'session-a')
+      assert.equal(fromSeq, 0)
+      return { events }
+    },
+  }
+
+  const response = await fetchSessionUsage(persistence, 'session-a')
+  assert.equal(response.ok, true)
+  assert.ok(response.data)
+  const data = response.data
+
+  assert.equal(data.sessionId, 'session-a')
+  assert.equal(data.title, '会话标题')
+  assert.equal(data.calls, 2)
+  assert.equal(data.firstActive, first)
+  assert.equal(data.lastActive, last)
+
+  const proCost = costOf(first, 'deepseek-v4-pro', 1_000, 500, 200)
+  const flashCost = costOf(last, 'deepseek-v4-flash', 4_000, 2_000, 800)
+  closeTo(data.cost, proCost + flashCost)
+  assert.equal(data.total, 1_700 + 6_800)
+
+  // Most expensive model first — flash's larger token volume outcosts pro here.
+  assert.equal(data.models.length, 2)
+  assert.equal(data.models[0]?.model, 'deepseek-v4-flash')
+  assert.equal(data.models[0]?.provider, 'deepseek')
+  assert.equal(data.models[0]?.calls, 1)
+  assert.deepEqual({ input: data.models[0]?.input, output: data.models[0]?.output, cache: data.models[0]?.cache, total: data.models[0]?.total }, {
+    input: 4_000, output: 800, cache: 2_000, total: 6_800,
+  })
+  closeTo(data.models[0]?.cost ?? 0, flashCost)
+  assert.equal(data.models[1]?.model, 'deepseek-v4-pro')
+  closeTo(data.models[1]?.cost ?? 0, proCost)
+})
+
+test('session usage reports a clean empty result for a session with no usage yet, without touching list()', async () => {
+  const persistence: SessionPersistenceFace = {
+    list: async () => { throw new Error('fetchSessionUsage must not call list()') },
+    readFrom: async () => ({ events: [{ type: 'session/title', data: { title: '空会话' } }] }),
+  }
+  const response = await fetchSessionUsage(persistence, 'empty-session')
+  assert.deepEqual(response, {
+    ok: true,
+    data: {
+      sessionId: 'empty-session',
+      title: '空会话',
+      total: 0,
+      cost: 0,
+      calls: 0,
+      firstActive: null,
+      lastActive: null,
+      models: [],
+    },
+  })
+})
+
+test('session usage falls back to a short id title when the session never logged one', async () => {
+  const persistence: SessionPersistenceFace = {
+    list: async () => [],
+    readFrom: async () => ({ events: [] }),
+  }
+  const response = await fetchSessionUsage(persistence, 'abcdefgh-1234')
+  assert.ok(response.ok)
+  assert.equal(response.data?.title, '会话 abcdefgh')
+})
+
+test('session usage reports actionable errors for bad input and broken reads, without throwing', async () => {
+  assert.deepEqual(await fetchSessionUsage(undefined, 'session-a'), {
+    ok: false,
+    error: '会话持久化服务不可用',
+  })
+
+  const persistence: SessionPersistenceFace = {
+    list: async () => [],
+    readFrom: async () => { throw new Error('disk offline') },
+  }
+  assert.deepEqual(await fetchSessionUsage(persistence, 'session-a'), {
+    ok: false,
+    error: '读取会话日志失败：disk offline',
+  })
+  assert.deepEqual(await fetchSessionUsage(persistence, ''), {
+    ok: false,
+    error: '缺少会话 id',
+  })
+})
+
+test('isValidSessionId whitelists a safe charset and rejects path-traversal-shaped input', () => {
+  // Real-world / test-fixture shapes seen in this codebase all pass.
+  for (const ok of [
+    'session-484a1c14-c6fe-4d6a-abfd-a2d8d2f664d5',
+    'session-one',
+    'abcdefgh-1234',
+    'windowed-session',
+    'a',
+    '0123456789',
+    '_-_-_',
+  ]) {
+    assert.equal(isValidSessionId(ok), true, ok)
+  }
+
+  // Path separators, `..`, null bytes, and anything outside the safe
+  // charset must all be rejected — this is what stands between a
+  // browser-controlled `?id=` and `persistence.readFrom`.
+  for (const bad of [
+    '',
+    '../../etc/passwd',
+    '..',
+    'foo/bar',
+    'foo\\bar',
+    '/etc/passwd',
+    'a\0b',
+    'session id',
+    'session/../../secret',
+    'a'.repeat(129),
+    'sessión',
+    'a\nb',
+    '%2e%2e%2f',
+  ]) {
+    assert.equal(isValidSessionId(bad), false, bad)
+  }
+})
+
+test('session usage rejects a malformed session id without touching persistence', async () => {
+  const persistence: SessionPersistenceFace = {
+    list: async () => { throw new Error('fetchSessionUsage must not call list()') },
+    readFrom: async () => { throw new Error('fetchSessionUsage must not read a malformed id') },
+  }
+  assert.deepEqual(await fetchSessionUsage(persistence, '../../etc/passwd'), {
+    ok: false,
+    error: '会话 id 格式不合法',
+  })
+  assert.deepEqual(await fetchSessionUsage(persistence, 'foo/bar'), {
+    ok: false,
+    error: '会话 id 格式不合法',
   })
 })

@@ -7,7 +7,7 @@
  */
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
 import { USAGE_WINDOW_DAYS } from '../contract.ts'
-import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
+import { fetchBalance, fetchSessionUsage, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import { getComposerElement, getShellFrame } from './dom.ts'
@@ -15,7 +15,7 @@ import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsage
 import { syncStatusText, type SyncState } from './freshness.ts'
 import { fallbackT, localizeApiError, useI18n, type Translate } from './i18n.tsx'
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
-import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
+import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, SessionUsageData, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
 import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
 
 /** Fallback composer height for the narrow-screen bottom safe area, used only
@@ -39,6 +39,18 @@ function BalanceSkeleton(): ReactElement {
     <div className="dq-balance-grid">
       <div className="dq-stat"><Skel w={56} h={11} /><Skel w={150} h={22} /></div>
       <div className="dq-stat"><Skel w={28} h={11} /><Skel w={48} h={22} /></div>
+    </div>
+  )
+}
+
+/** Placeholder for the current-session card: same three-`Stat` grammar as
+ *  the balance card's skeleton above, just one more column. */
+function SessionUsageSkeleton(): ReactElement {
+  return (
+    <div className="dq-balance-grid">
+      <div className="dq-stat"><Skel w={64} h={11} /><Skel w={96} h={18} /></div>
+      <div className="dq-stat"><Skel w={70} h={11} /><Skel w={80} h={18} /></div>
+      <div className="dq-stat"><Skel w={64} h={11} /><Skel w={40} h={18} /></div>
     </div>
   )
 }
@@ -381,6 +393,80 @@ export const modelKeyOf = (m: ModelUsage): string => (m.provider !== '' ? `${m.p
 export const modelNameOf = (m: ModelUsage, t: Translate = fallbackT): string => (m.model !== '' ? m.model : t('common.unknownModel'))
 
 /**
+ * Usage for exactly the session the 「额度」 tab is opened inside — the one
+ * dimension every other card on this page does not answer (they are all
+ * account-wide, replayed across every local session log). Deliberately
+ * reuses the same `.dq-balance-grid`/`Stat` headline layout as the balance
+ * card above it and the same `.dq-rank`/`MODEL_COLORS` breakdown as the
+ * model cost ranking card further down, rather than inventing a third
+ * visual language for numbers that are structurally the same kind of thing.
+ */
+function SessionUsageCard(props: { data: SessionUsageData }): ReactElement {
+  const { t, locale } = useI18n()
+  const { data } = props
+  if (data.calls === 0) return <div className="dq-empty">{t('sessionUsage.empty')}</div>
+
+  const rangeTime = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+  const range = data.firstActive !== null && data.lastActive !== null
+    ? (data.firstActive === data.lastActive
+      ? rangeTime.format(data.firstActive)
+      : `${rangeTime.format(data.firstActive)} – ${rangeTime.format(data.lastActive)}`)
+    : null
+
+  return (
+    <>
+      <div className="dq-balance-grid">
+        <Stat label={t('sessionUsage.cost')}><div className="dq-stat-value">¥ {fmt(data.cost)}</div></Stat>
+        <Stat label={t('sessionUsage.tokens')}><div className="dq-stat-value">{fmtCompact(data.total, locale)}</div></Stat>
+        <Stat label={t('sessionUsage.calls')}><div className="dq-stat-value">{fmtInt(data.calls)}</div></Stat>
+      </div>
+      {range !== null && <p className="dq-session-sub">{t('sessionUsage.range', { range })}</p>}
+      {data.models.length > 0 && (
+        <div className="dq-rank">
+          {data.models.map((m, index) => {
+            const key = m.provider !== '' ? `${m.provider}/${m.model}` : (m.model !== '' ? m.model : `model-${index}`)
+            const name = m.model !== '' ? m.model : t('common.unknownModel')
+            const color = MODEL_COLORS[index % MODEL_COLORS.length]
+            const share = data.cost > 0 ? m.cost / data.cost : 0
+            return (
+              <div key={key} className="dq-rank-row">
+                <div className="dq-rank-head">
+                  <span className="dq-rank-name" title={key}>
+                    <span className="dq-legend-swatch" style={{ background: color }} />
+                    {name}
+                  </span>
+                  <span className="dq-rank-cost">
+                    ¥ {fmt(m.cost)}
+                    <span className="dq-rank-share">{(share * 100).toFixed(1)}%</span>
+                  </span>
+                </div>
+                <div
+                  className="dq-rank-track"
+                  role="img"
+                  aria-label={t('models.shareAria', { name, percent: (share * 100).toFixed(1) })}
+                >
+                  <div className="dq-rank-fill" style={{ width: `${Math.max(share * 100, 1.5)}%`, background: color }} />
+                </div>
+                <div className="dq-rank-sub">
+                  {t('models.detail', {
+                    tokens: fmtCompact(m.total, locale),
+                    calls: t('common.calls', { count: fmtInt(m.calls) }),
+                    input: fmtCompact(m.input, locale), output: fmtCompact(m.output, locale), cache: fmtCompact(m.cache, locale),
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
  * What prefix caching is doing for the bill. Cache-hit tokens are priced at a
  * small fraction of cache-miss tokens, so on a DSH workload this is usually the
  * single biggest lever on cost — and it was invisible before.
@@ -719,7 +805,7 @@ function ChartMetricPicker(props: { value: ChartMetric; onChange: (metric: Chart
   )
 }
 
-export function BalanceDashboard(): ReactElement {
+export function BalanceDashboard(props: { sessionId?: string }): ReactElement {
   const { t, locale } = useI18n()
   // Seed state from the cache so the tab never waits on the network when
   // data has been fetched before (stale-while-revalidate).
@@ -758,6 +844,14 @@ export function BalanceDashboard(): ReactElement {
   const budgetInputRef = useRef<HTMLInputElement | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [composerHeight, setComposerHeight] = useState<number | null>(null)
+  // The current-session card: fetched per session id, not through the
+  // account-wide balance/usage caches (see DESIGN_NOTES — session-scoped
+  // data does not go through the localStorage-persisted cache). No cached
+  // seed on first render since there is nothing to seed from.
+  const [sessionUsage, setSessionUsage] = useState<SessionUsageData | null>(null)
+  const [loadingSessionUsage, setLoadingSessionUsage] = useState(props.sessionId !== undefined && props.sessionId !== '')
+  const [sessionUsageError, setSessionUsageError] = useState<string | null>(null)
+  const sessionUsageIdRef = useRef<string | null>(null)
 
   // Narrow viewports only: keep the last card scrollable clear of the host's
   // fixed composer, which otherwise overlaps the bottom of a long dashboard
@@ -852,12 +946,63 @@ export function BalanceDashboard(): ReactElement {
     } else if (usageError !== null) {
       setNotice({ kind: 'usage', error: usageError })
     }
+    // The current-session card rides along with an explicit force refresh so
+    // the one refresh button covers all three data sources; the initial
+    // mount-time fetch is handled separately below, keyed on the session id
+    // itself, so it is not duplicated here (force=false would otherwise fire
+    // twice on first render — once from this effect, once from that one).
+    if (force && props.sessionId !== undefined && props.sessionId !== '') {
+      void loadSessionUsage(props.sessionId, true)
+    }
+  }
+
+  /** Stale-while-revalidate for the current-session card: on success, swap
+   *  in the new data; on failure, keep whatever is already on screen (a
+   *  refresh going bad should not blank out a card that was working). Guards
+   *  every state write against the session id having changed mid-flight, so
+   *  a slow request for a session the user has since navigated away from
+   *  cannot clobber the next one's numbers. */
+  const loadSessionUsage = async (id: string, force: boolean): Promise<void> => {
+    if (!force) setLoadingSessionUsage(true)
+    try {
+      const res = await fetchSessionUsage(id, force)
+      if (sessionUsageIdRef.current !== id) return
+      if (res.ok && res.data !== undefined) {
+        setSessionUsage(res.data)
+        setSessionUsageError(null)
+      } else {
+        setSessionUsageError(res.error ?? null)
+      }
+    } catch (err) {
+      if (sessionUsageIdRef.current === id) setSessionUsageError(errText(err))
+    } finally {
+      if (sessionUsageIdRef.current === id) setLoadingSessionUsage(false)
+    }
   }
 
   useEffect(() => {
     void load(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Mount-time (and session-switch-time) fetch for the current-session card.
+  // Independent of the balance/usage effect above: this data is scoped to
+  // whichever session the tab happens to be open inside, not to the account.
+  useEffect(() => {
+    const id = props.sessionId
+    sessionUsageIdRef.current = id ?? null
+    if (id === undefined || id === '') {
+      setSessionUsage(null)
+      setSessionUsageError(null)
+      setLoadingSessionUsage(false)
+      return
+    }
+    setSessionUsage(null)
+    setSessionUsageError(null)
+    setLoadingSessionUsage(true)
+    void loadSessionUsage(id, false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.sessionId])
 
   useEffect(() => {
     const timer = window.setInterval(() => setFreshnessNow(Date.now()), 30_000)
@@ -1093,6 +1238,21 @@ export function BalanceDashboard(): ReactElement {
           <div className="dq-empty">{t('balance.empty')}</div>
         )}
       </div>
+
+      {props.sessionId !== undefined && props.sessionId !== '' && (
+        <div className="dq-card dq-card--primary">
+          <div className="dq-card-title">{t('sessionUsage.title')}</div>
+          {sessionUsage !== null ? (
+            <SessionUsageCard data={sessionUsage} />
+          ) : loadingSessionUsage ? (
+            <SessionUsageSkeleton />
+          ) : sessionUsageError !== null ? (
+            <div className="dq-empty dq-empty--error">{localizeApiError(sessionUsageError, t, 'error.query')}</div>
+          ) : (
+            <div className="dq-empty">{t('sessionUsage.empty')}</div>
+          )}
+        </div>
+      )}
 
       <div className="dq-card dq-card--primary">
         <div className="dq-card-title">{t('overview.title')}</div>
