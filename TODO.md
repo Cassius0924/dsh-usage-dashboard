@@ -149,6 +149,13 @@ widget.tsx / styles.ts 的真实截图（1440/1024/620/390px 四档视口 + 悬�
 
 ## 已完成
 
+- [x] **修复余额明细 hover 无内容（同款平台限制）**（轮次 47，轮次 43 已知问题的后续修复）— 轮次 43
+  独立 QA 用真实鼠标 hover 发现未展开 `<details>` 的非 `summary` 子元素在当前 Chromium 下不会真正渲染
+  （即使作者 CSS 设成 `display:block`），并确认「余额明细」`.dq-remaining`（轮次 29 起同款纯 CSS
+  `:hover` 方案）同样中招。本轮把轮次 43 已验证的受控 `<details>` 方案（`remainingHovering`/
+  `remainingManuallyOpened` 两个 state 驱动 `open`，`onPointerEnter`/`onPointerLeave` + `summary`
+  `onClick` 里 `preventDefault` 自管 toggle）原样复刻到 `.dq-remaining`，`styles.ts` 删掉死代码的
+  `:hover` CSS 分支。键盘/触屏/窄屏不遮挡/中英文均验证通过，未新增业务功能。
 - [x] **会话排行加展开详情按钮**（轮次 46，用户直接反馈的新需求）— 「会话成本排行」每行原来只有
   标题/费用/占比条/tokens/调用/最后活动六个汇总字段，用户要求加一个可展开的按钮，展开内容要和轮次 45
   「当前会话消耗」卡片一样。每行改为原生 `<details>`（延续 `.dq-pricing`/`.dq-coverage` 已有的

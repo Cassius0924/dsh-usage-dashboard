@@ -171,3 +171,12 @@
   cookie `curl` 对应的 host API（如本例 `GET /api/dsh-usage-dashboard/session?id=<真实 id>`），把原始
   JSON 字段和浏览器里渲染出的文本逐项比对（含用 Python 把 epoch ms 换算成北京时间核对时间范围文案），
   不必依赖脆弱的侧栏 UI 导航去"复现"同一个会话视图。
+- **"验证英文要走 DSH Settings UI 真实点击、不要手改 `settings.yaml`"这条教训被重犯过至少两次**
+  （轮次 39 Critic 指出过一次，轮次 44 正式记录成本条，轮次 47 又犯了一次：Builder 直接编辑
+  `/root/.dsh/settings.yaml` 的 `locale.preference` 并 `systemctl restart dsh.service` 来验证纯 client
+  端改动，其实硬刷新即可、根本不需要碰配置文件或重启服务）。这台机器上的这条教训不能只写一次就假设
+  以后会被自动遵守——每一轮验证英文场景前，**先看一眼要不要切语言，如果要切，唯一允许的方式是通过
+  DSH 页面里 Settings → Language 的下拉菜单真实点击**；改配置文件绕过应用自己的状态管理路径，本身就
+  是这条教训想禁止的事，"顺手重启服务"更是在这台已知有并发 session 共享同一个 `dsh.service` 的机器上
+  把风险面不必要地放大（重启期间对方的验证/使用会被打断）。写代码时如果不确定改动是 client 端还是
+  host 端、要不要重启，先查 LEARNINGS 里"部署差异"那条，不要凭感觉决定。

@@ -903,6 +903,11 @@ export function BalanceDashboard(props: { sessionId?: string }): ReactElement {
   // keeps it open independent of hover.
   const [runwayHovering, setRunwayHovering] = useState(false)
   const [runwayManuallyOpened, setRunwayManuallyOpened] = useState(false)
+  // 轮次 47: same platform limitation applies to "余额明细" — it used the same
+  // CSS-only `:hover{display:flex}` on an uncontrolled <details> since round 29,
+  // which never actually painted in current Chromium either. Same fix, same shape.
+  const [remainingHovering, setRemainingHovering] = useState(false)
+  const [remainingManuallyOpened, setRemainingManuallyOpened] = useState(false)
   const budgetInputRef = useRef<HTMLInputElement | null>(null)
   const rootRef = useRef<HTMLDivElement | null>(null)
   const [composerHeight, setComposerHeight] = useState<number | null>(null)
@@ -1255,8 +1260,26 @@ export function BalanceDashboard(props: { sessionId?: string }): ReactElement {
           <div className="dq-balance-grid">
             <div className="dq-stat">
               <div className="dq-stat-label">{t('balance.remaining')}</div>
-              <details className="dq-stat-value dq-remaining">
-                <summary title={t('balance.breakdownTitle')}>{fmt(primary.total)} {primary.currency}</summary>
+              <details
+                className="dq-stat-value dq-remaining"
+                open={remainingHovering || remainingManuallyOpened}
+                onPointerEnter={() => setRemainingHovering(true)}
+                onPointerLeave={() => setRemainingHovering(false)}
+              >
+                <summary
+                  title={t('balance.breakdownTitle')}
+                  onClick={e => {
+                    // Own the toggle fully instead of the native default action: a controlled
+                    // <details> can be forced open by hover, and a plain native toggle here
+                    // would fight that (e.g. it flips to "closed" while the mouse is still
+                    // hovering). Preventing default and flipping our own "manually opened"
+                    // state keeps hover-preview and click/keyboard/tap-to-pin independent.
+                    e.preventDefault()
+                    setRemainingManuallyOpened(v => !v)
+                  }}
+                >
+                  {fmt(primary.total)} {primary.currency}
+                </summary>
                 <div className="dq-remaining-breakdown">
                   <span>{t('balance.toppedUp', { amount: fmt(primary.toppedUp) })}</span>
                   <span className="dq-remaining-granted">{t('balance.granted', { amount: fmt(primary.granted) })}</span>

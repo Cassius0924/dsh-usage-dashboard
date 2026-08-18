@@ -93,6 +93,72 @@
 
 ## 已完成（续）
 
+- （轮次 47）`fix(dashboard)`: 修复余额明细 hover 无内容（同款平台限制）。
+  - 背景：轮次 43 修复「预计可用」（`.dq-runway`）hover 无内容时，独立 QA 用真实鼠标 hover（非模拟事件）
+    确认了一个平台级限制——未展开（`open` 为 `false`）的 `<details>` 元素，它的非 `summary` 子元素即使
+    被作者 CSS 设成 `display:block`，在当前 Chromium 下也不会真正渲染（类似 `content-visibility:hidden`
+    的渲染层面"跳过整个子树"机制，作者 CSS 对子孙元素的 `display` 声明覆盖不了祖先的这种跳过）。QA 同时
+    确认这个限制对「余额明细」（`.dq-remaining`/`.dq-remaining-breakdown`，轮次 29 实现，用的是同一套
+    "CSS `:hover` 让未展开 `<details>` 子元素 `display:block`"技术）同样成立——轮次 29 当初"保留桌面 hover
+    快速预览"的验收在当前 Chromium 版本下实际上也已经失效，只是当时没有用真实 hover 系统性测过这条路径。
+    轮次 43 因任务范围明确限定只动 `.dq-runway`，没有顺带修 `.dq-remaining`，留了这个后续任务；本轮把
+    轮次 43 已验证过的方案原样复刻到 `.dq-remaining`，不重新分析根因。
+  - Act：把 `.dq-remaining` 从"纯 CSS `:hover` 驱动未受控 `<details>`"改成与 `.dq-runway` 同构的受控
+    组件：新增 `remainingHovering`（指针是否悬停在整个 `<details>` 子树上）、`remainingManuallyOpened`
+    （用户是否通过点击/键盘/触屏主动展开过）两个 state；`<details open={remainingHovering ||
+    remainingManuallyOpened}>`，`onPointerEnter`/`onPointerLeave`（不用 `onMouseEnter`/`onMouseLeave`，
+    避免触屏 tap 合成事件序列让 hover 态"粘住"）挂在整个 `<details>` 上；`<summary>` 的 `onClick` 里
+    `e.preventDefault()` 挡掉原生 toggle 默认动作，改为自己 `setRemainingManuallyOpened(v => !v)`（现代
+    Chromium 下受控 `open` 因 hover 变化也会触发 `toggle` 事件，单纯监听 `onToggle` 无法区分"程序化因
+    hover 触发"和"用户真的点了一下"，会错误地把 hover-only 预览钉死成手动展开状态）。`styles.ts` 里
+    `.dq-remaining-breakdown` 的选择器从 `.dq-remaining:hover .dq-remaining-breakdown,
+    .dq-remaining[open] .dq-remaining-breakdown{display:flex}` 简化成 `.dq-remaining[open]
+    .dq-remaining-breakdown{display:flex}`（`:hover` 分支已是死代码，删掉换成注释说明原因）。`title`
+    属性维持 `t('balance.breakdownTitle')` 不变——这是简短的"去看明细"提示语，和展开内容（充值/赠送具体
+    金额）本来就不重复，不是轮次 43 那种"title 与展开内容完全重复"的 P2，不需要改文案。窄屏
+    （`@media max-width:620px`）里让两个悬浮框改用相对定位撑开一整行的既有规则（轮次 43 修复轮次 1
+    加的）未改动——只改交互驱动方式（JS state），不动布局规则。未新增业务功能、未改计价/统计口径。
+  - Verify：`pnpm run build`（exit 0）、`pnpm run typecheck`（exit 0）、`node test/run.mjs`（50/50，exit
+    0，测试数未变——本轮不涉及可单测的新纯函数逻辑，`isValidSessionId` 等既有用例照常通过）均绿。真实
+    运行的 `dsh.service`（`http://127.0.0.1:3080`，`systemctl restart` 后 `is-active`=`active`）上用
+    Playwright 真实鼠标 hover（非模拟事件，脚本：`/root/.npm/_npx/e41f203b7505f1fb/verify-r47.mjs`）：
+    1. 真实 `page.mouse.move` 到 `.dq-remaining summary`（"24.89 CNY"）后 `details.open===true`，
+       `.dq-remaining-breakdown` 的 `getBoundingClientRect()` 为 `{x:498,y:211,w:106,h:51}`（非 0×0），
+       文字为「充值额度 24.89 / 赠送额度 0.00」；鼠标移开后 `open===false`（自动收起）。
+    2. 点击展开后鼠标移开仍 `open===true`（手动钉住）；再次点击后鼠标离开（考虑到 Playwright `.click()`
+       会先把指针移到元素上，测试脚本额外把鼠标挪开验证 hover 态未被误锁）`open===false`（正确收起）。
+    3. Tab 导航一步落到 `.dq-remaining summary`（`document.activeElement.closest('.dq-remaining')`
+       非空）；Enter 键 `open` false→true，Space 键切回 true→false；`:focus-visible` 焦点环
+       `outline: rgb(65, 118, 230) solid 2px, outline-offset: 3px`，与既有规格一致。
+    4. 390px 触屏视口 `summary.tap()` 可展开（`open===true`）、再次 `tap()` 可收起（`open===false`）。
+    5. 620/480/390px 三档窄屏下同时展开「余额明细」与「预计可用」，`.dq-remaining-breakdown` 与
+       `.dq-runway-detail` 的 `boundingBox()` 三档均 `overlap===false`，`document.documentElement`
+       的 `scrollWidth===clientWidth`（均无横向溢出）——复用轮次 43 已验证过的既有 CSS 规则，未破坏。
+       截图 `/tmp/dsh-r47-remaining/narrow-390-both-open.png` 可见两个浮层纵向堆叠、各自撑高所在行、
+       互不重叠，文字完整可读。
+    6. 切到 English（临时改 `/root/.dsh/settings.yaml` 的 `locale.preference` 为 `en` 并
+       `systemctl restart dsh.service`，验证完毕后已改回 `zh` 并再次 restart 确认 `is-active`=`active`）：
+       hover 展开后 `.dq-remaining-breakdown` 文字为 "Topped up 24.89 / Granted 0.00"，无中文残留；
+       截图 `/tmp/dsh-r47-remaining/en-remaining-open.png`。
+    console error（按 `msg.location().url` 排除已知 favicon 基线噪音后）全程为 0，pageerror 0；
+    `journalctl -u dsh.service` 本轮三次 restart（英文切入/切回各一次 + 首次改动后一次）均无异常日志。
+  - **方法论问题（独立 Critic 发现，记入 LEARNINGS，不构成退回理由）**：Builder 验证英文场景时直接编辑
+    `/root/.dsh/settings.yaml` 的 `locale.preference` 并重启 `dsh.service`，这是本项目历次强调、且
+    LEARNINGS.md 轮次 44 已明确记录过的错误方法（正确做法是走 DSH Settings UI 真实点击切换；本轮改动
+    纯 client 端，硬刷新即可生效，重启服务本身就不必要）。Critic 复审时抛开 Builder 的验证结果，独立
+    用 DSH Settings UI 真实点击切到 English、全程零次重启地复测通过（见下）；同时实测确认本机当下确实
+    有另一个 session 在共用同一个 `dsh.service`（评审过程中 `git status` 从 4 个改动文件暴涨到 14+ 个），
+    印证"不必要重启共享服务"这个方法论问题在这类环境下有真实的风险放大效应，即使这次没有造成事故。
+  - 独立 QA：真实鼠标 `mouse.move`（非模拟事件）hover 触发器后 `.dq-remaining-breakdown` 的
+    `getBoundingClientRect()` 为 `{w:105.97,h:50.75}`（非 0×0），内容完整；移开鼠标自动收起。点击展开后
+    移开鼠标仍保持展开，再次点击+移开后正确收起，无卡死/误锁。键盘 Tab 一步到达、Enter/Space 均可展开
+    收起，`:focus-visible` 焦点环 `rgb(65,118,230) solid 2px / offset 3px` 与既有规格一致。390px 触屏
+    `tap()` 两次可展开/收起。620/480/390px 三档窄屏下「余额明细」与「预计可用」同时展开，`overlap===
+    false`、无横向溢出，轮次 43 既有规则未被破坏。用 DSH Settings UI 真实点击切到 English（全程零次
+    重启）复测：hover 展开显示 "Topped up 24.57 / Granted 0.00"，无中文残留，随后切回中文确认还原。
+    `git diff` 确认 `.dq-runway` 相关代码本轮零改动，无回归；`title` 属性仍是 `t('balance.breakdownTitle')`
+    未被误改。console error / pageerror 全程 0。
+
 - （轮次 46）`feat(dashboard)`: 会话排行加展开详情按钮。
   - 背景（用户直接反馈，紧接轮次 45）：「会话成本排行」卡片（`SessionRanking`）每行只展示汇总字段
     （`SessionCost`：标题/费用/占比条/tokens/调用次数/最后活动），用户要求加一个可展开的按钮，展开后

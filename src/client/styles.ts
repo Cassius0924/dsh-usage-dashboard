@@ -98,12 +98,15 @@ export const css = `
 .dq-runway[open] .dq-runway-detail{display:block}
 /* hero number for the balance, matching .dq-period-cost; relies on cascade order (declared after
    .dq-stat-value, same specificity) to win over the .dq-stat-value it's paired with in JSX — keep it below */
+/* 轮次 47: .dq-remaining is a controlled <details> too now (see dashboard.tsx), same reason as
+   .dq-runway above — an unopened <details>'s non-summary children don't actually render in current
+   Chromium regardless of author display value, so the old :hover{display:flex} branch was dead code. */
 .dq-remaining{position:relative;font-size:22px;font-weight:680;letter-spacing:-.01em;line-height:1.25}
 .dq-remaining>summary{display:inline-block;list-style:none;border-radius:4px;cursor:pointer;text-decoration:underline dotted var(--dsw-alias-border-l2,rgba(0,0,0,.25));text-underline-offset:4px}
 .dq-remaining>summary::-webkit-details-marker{display:none}
 .dq-remaining>summary:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:3px}
 .dq-remaining-breakdown{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;flex-direction:column;gap:4px;padding:8px 10px;background:var(--dsw-alias-bg-overlay,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);white-space:nowrap;font-size:12px;font-weight:500;color:var(--dsw-alias-label-primary,#1f2328)}
-.dq-remaining:hover .dq-remaining-breakdown,.dq-remaining[open] .dq-remaining-breakdown{display:flex}
+.dq-remaining[open] .dq-remaining-breakdown{display:flex}
 .dq-remaining-granted{color:var(--dsw-alias-label-tertiary,#59636e);font-weight:400;font-size:11px}
 /* narrow screens: .dq-balance-grid wraps its 3 stats onto separate lines, so the absolutely-positioned
    .dq-remaining-breakdown/.dq-runway-detail popovers can float down over whichever stat now sits in the
