@@ -247,6 +247,17 @@ export interface SessionModelUsage {
   calls: number
 }
 
+/** One completed conversation turn's usage. `messageId` is the durable id of
+ * the turn's final assistant message — the same identity the chat action-strip
+ * slot exposes to client plugins. Tool-call steps inside the turn are folded
+ * into this one figure rather than shown as misleading separate charges. */
+export interface TurnUsage {
+  messageId: string
+  total: number
+  cost: number
+  calls: number
+}
+
 /**
  * Usage for exactly one session — what the 「额度」tab's own conversation
  * is costing, as opposed to `UsageData`'s account-wide totals. Fetched on
@@ -266,6 +277,8 @@ export interface SessionUsageData {
   lastActive: number | null
   /** Most expensive model first. */
   models: SessionModelUsage[]
+  /** Completed turns, in log order, addressed by their final message id. */
+  turns: TurnUsage[]
 }
 
 export interface SessionUsageResponse {

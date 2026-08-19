@@ -16,7 +16,8 @@ import { syncStatusText, type SyncState } from './freshness.ts'
 import { fallbackT, localizeApiError, useI18n, type Translate } from './i18n.tsx'
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, SessionUsageData, UsageCoverage, UsageData, UsageWindowDays } from '../contract.ts'
-import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetVisibleStore } from './store.ts'
+import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetTabIdsStore, widgetVisibleStore } from './store.ts'
+import type { ConversationViewTab, ConversationViewsSource } from './views.ts'
 
 /** Fallback composer height for the narrow-screen bottom safe area, used only
  *  until the real measurement below lands (or if the host markup ever stops
@@ -867,7 +868,7 @@ function ChartMetricPicker(props: { value: ChartMetric; onChange: (metric: Chart
   )
 }
 
-export function BalanceDashboard(props: { sessionId?: string }): ReactElement {
+export function BalanceDashboard(props: { sessionId?: string; views: ConversationViewsSource }): ReactElement {
   const { t, locale } = useI18n()
   // Seed state from the cache so the tab never waits on the network when
   // data has been fetched before (stale-while-revalidate).
@@ -889,6 +890,9 @@ export function BalanceDashboard(props: { sessionId?: string }): ReactElement {
   const [freshnessNow, setFreshnessNow] = useState(Date.now())
   const hadDataRef = useRef(cachedBalance !== null || cachedUsage !== null)
   const [widgetOn, setWidgetOn] = useState(widgetVisibleStore.get())
+  const [widgetTabIds, setWidgetTabIds] = useState<string[] | null>(widgetTabIdsStore.get())
+  const [viewTabs, setViewTabs] = useState<ConversationViewTab[]>(() => props.views.list())
+  useEffect(() => props.views.subscribe(() => setViewTabs(props.views.list())), [props.views])
   const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
   const [monthlyBudget, setMonthlyBudget] = useState(monthlyBudgetStore.get())
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
@@ -1080,6 +1084,14 @@ export function BalanceDashboard(props: { sessionId?: string }): ReactElement {
     const next = !widgetOn
     setWidgetOn(next)
     widgetVisibleStore.set(next)
+  }
+
+  const widgetTabs = viewTabs.filter(tab => tab.id !== 'balance')
+  const toggleWidgetTab = (id: string): void => {
+    const selected = widgetTabIds ?? widgetTabs.map(tab => tab.id)
+    const next = selected.includes(id) ? selected.filter(tabId => tabId !== id) : [...selected, id]
+    setWidgetTabIds(next)
+    widgetTabIdsStore.set(next)
   }
 
   const changeLowBalance = (value: number): void => {
@@ -1549,6 +1561,26 @@ export function BalanceDashboard(props: { sessionId?: string }): ReactElement {
           <span>{t('settings.widget')}</span>
         </label>
         <div className="dq-toggle-hint">{t('settings.widgetHint')}</div>
+        <div className="dq-setting dq-setting--tabs">
+          <div className="dq-setting-label" id="dq-widget-tabs-label">{t('settings.widgetTabs')}</div>
+          <div className="dq-setting-control dq-widget-tabs" role="group" aria-labelledby="dq-widget-tabs-label">
+            <div className="dq-widget-tab-list">
+              {widgetTabs.map(tab => (
+                <label className="dq-widget-tab" key={tab.id}>
+                  <input
+                    type="checkbox"
+                    checked={widgetTabIds === null || widgetTabIds.includes(tab.id)}
+                    onChange={() => toggleWidgetTab(tab.id)}
+                  />
+                  <span>{tab.label}</span>
+                </label>
+              ))}
+            </div>
+            <span className="dq-setting-hint">
+              {widgetTabs.length === 0 ? t('settings.widgetTabsEmpty') : t('settings.widgetTabsHint')}
+            </span>
+          </div>
+        </div>
         <div className="dq-setting">
           <label className="dq-setting-label" htmlFor="dq-low-balance">{t('settings.lowBalance')}</label>
           <div className="dq-setting-control">

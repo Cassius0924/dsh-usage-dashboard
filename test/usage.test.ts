@@ -291,13 +291,23 @@ test('session usage folds one session into per-model totals with a first/last ac
     {
       type: 'assistant/message',
       time: first,
-      data: { usage: { inputTokens: 1_000, outputTokens: 200, cacheReadTokens: 500 } },
+      data: {
+        turn: 1,
+        step: 1,
+        message: { id: 'message-tool-step' },
+        usage: { inputTokens: 1_000, outputTokens: 200, cacheReadTokens: 500 },
+      },
     },
     { type: 'request/header', data: { header: { config: { provider: 'deepseek', model: 'deepseek-v4-flash' } } } },
     {
       type: 'assistant/message',
       time: last,
-      data: { usage: { inputTokens: 4_000, outputTokens: 800, cacheReadTokens: 2_000 } },
+      data: {
+        turn: 1,
+        step: 2,
+        message: { id: 'message-final' },
+        usage: { inputTokens: 4_000, outputTokens: 800, cacheReadTokens: 2_000 },
+      },
     },
   ]
   const persistence: SessionPersistenceFace = {
@@ -324,6 +334,11 @@ test('session usage folds one session into per-model totals with a first/last ac
   const flashCost = costOf(last, 'deepseek-v4-flash', 4_000, 2_000, 800)
   closeTo(data.cost, proCost + flashCost)
   assert.equal(data.total, 1_700 + 6_800)
+  assert.equal(data.turns.length, 1)
+  assert.equal(data.turns[0]?.messageId, 'message-final')
+  assert.equal(data.turns[0]?.calls, 2)
+  assert.equal(data.turns[0]?.total, 1_700 + 6_800)
+  closeTo(data.turns[0]?.cost ?? 0, proCost + flashCost)
 
   // Most expensive model first — flash's larger token volume outcosts pro here.
   assert.equal(data.models.length, 2)
@@ -355,6 +370,7 @@ test('session usage reports a clean empty result for a session with no usage yet
       firstActive: null,
       lastActive: null,
       models: [],
+      turns: [],
     },
   })
 })

@@ -2,7 +2,7 @@
 
 export const css = `
 .dsh-quota-root{position:absolute;right:16px;bottom:16px;z-index:2147483000;pointer-events:auto;opacity:1;visibility:visible;font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:13px;line-height:1.45;color:var(--dsw-alias-label-primary,#1f2328);transition:left .28s cubic-bezier(.22,1,.36,1),top .28s cubic-bezier(.22,1,.36,1),opacity .16s ease-out,visibility 0s linear}
-.dsh-quota-root.dsh-quota-root--dashboard{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .14s ease-out,visibility 0s linear .14s}
+.dsh-quota-root.dsh-quota-root--hidden{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .14s ease-out,visibility 0s linear .14s}
 .dsh-quota-root.dsh-quota-dragging{transition:none}
 .dsh-quota-card,.dsh-quota-card *{box-sizing:border-box}
 .dsh-quota-card{background:var(--dsw-alias-bg-overlay,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,.18);padding:12px 14px;min-width:208px;max-width:270px;-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
@@ -32,6 +32,17 @@ export const css = `
 .dsh-quota-label{color:var(--dsw-alias-label-secondary,#59636e)}
 .dsh-quota-value{color:var(--dsw-alias-label-primary,#1f2328);font-variant-numeric:tabular-nums}
 .dsh-quota-error{color:var(--dsw-alias-state-error-primary,#cf222e)}
+.dq-message-cost{position:relative;display:inline-flex;align-items:center;order:10;gap:10px;height:28px;color:var(--dsw-alias-label-tertiary,#59636e);font-size:12px;line-height:20px;font-variant-numeric:tabular-nums;white-space:nowrap;cursor:help}
+.dq-message-cost-separator{cursor:default}
+.dq-message-cost-amount{text-decoration-line:underline;text-decoration-style:dotted;text-decoration-color:currentColor;text-underline-offset:4px}
+.dq-message-cost:hover{color:var(--dsw-alias-label-secondary,#3f4852)}
+.dq-message-cost:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px;border-radius:4px}
+.dq-message-cost::after{content:attr(data-dq-tooltip);position:absolute;left:0;top:calc(100% + 6px);z-index:2147483001;width:max-content;max-width:min(240px,calc(100vw - 24px));padding:6px 9px;border-radius:8px;background:var(--dsw-alias-bg-inverse,#1f2328);color:var(--dsw-alias-label-inverse,#fff);box-shadow:0 6px 18px rgba(0,0,0,.22);font-size:12px;font-weight:400;line-height:1.45;text-align:left;white-space:normal;pointer-events:none;opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s ease-out,transform .12s cubic-bezier(.22,1,.36,1),visibility 0s linear .12s}
+.dq-message-cost:hover::after,.dq-message-cost:focus-visible::after{opacity:1;visibility:visible;transform:translateY(0);transition:opacity .12s ease-out,transform .12s cubic-bezier(.22,1,.36,1),visibility 0s linear}
+@media (hover:hover){
+  [data-time-hover-root] .dq-message-cost{opacity:0;transition:opacity 80ms ease}
+  [data-time-hover-root]:hover .dq-message-cost,[data-time-hover-root]:focus-within .dq-message-cost{opacity:1}
+}
 /* 卡片间距（此处 gap）刻意大于卡内小节间距（margin-top:12/14/16px 那一档），制造"卡片外疏、卡片内密"的
    疏密对比：24px 相对卡内最大档 16px 仍有 1.5 倍级差，相对常见档 12px 有 2 倍级差，不与 .dq-card 的
    padding（16px/20px，卡片内部呼吸感，轮次 36 已定）混同。 */
@@ -267,7 +278,11 @@ p.dq-session-sub{margin:8px 0}
 .dq-toggle{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px;margin-top:14px;padding-top:14px;border-top:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
 .dq-toggle input{width:16px;height:16px;accent-color:var(--dsw-alias-state-business-primary,#0969da);cursor:pointer}
 .dq-toggle-hint{margin:5px 0 0 26px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,#59636e)}
-.dq-toggle input:focus-visible,.dq-model-item input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
+.dq-widget-tabs{align-items:flex-start;flex-direction:column;gap:7px}
+.dq-widget-tab-list{display:flex;align-items:center;flex-wrap:wrap;gap:6px 14px}
+.dq-widget-tab{display:inline-flex;align-items:center;gap:7px;min-height:28px;color:var(--dsw-alias-label-primary,#1f2328);font-size:12px;cursor:pointer}
+.dq-widget-tab input{width:14px;height:14px;margin:0;accent-color:var(--dsw-alias-state-business-primary,#0969da);cursor:pointer;flex:none}
+.dq-toggle input:focus-visible,.dq-model-item input:focus-visible,.dq-widget-tab input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
 .dq-link:focus-visible,.dq-model-btn:focus-visible,.dq-chart-switch-btn:focus-visible,.dq-export-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
 .dq-usage-totals{display:flex;flex-wrap:wrap;gap:12px 24px;margin-bottom:16px}
 /* value itself (number+unit, e.g. "9999.9万") must never break across lines inside its own column —
@@ -377,6 +392,7 @@ p.dq-session-sub{margin:8px 0}
 @media (prefers-reduced-motion:reduce){
   .dsh-quota-root,.dsh-quota-root *,
   .dsh-quota-root *::before,.dsh-quota-root *::after,
+  .dq-message-cost,.dq-message-cost::after,
   .dq-balance,.dq-balance *,
   .dq-balance *::before,.dq-balance *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
 }

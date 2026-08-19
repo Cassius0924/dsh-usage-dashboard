@@ -6,13 +6,25 @@
  * sidebar collapse) instead of stranding itself at stale pixel coordinates.
  */
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
-import { fetchBalance, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt, subscribeUsage } from './api.ts'
+import {
+  fetchBalance,
+  fetchSessionUsage,
+  fetchUsage,
+  getCachedBalance,
+  getCachedSessionUsage,
+  getCachedUsage,
+  getCachedUsageAt,
+  subscribeSessionUsage,
+  subscribeUsage,
+} from './api.ts'
 import { fmt } from './charts.tsx'
-import type { BalanceData, UsageData } from '../contract.ts'
-import { getMainColumn, getShellFrame, slotBox } from './dom.ts'
+import type { BalanceData, SessionUsageData, UsageData } from '../contract.ts'
+import { getActiveConversationViewId, getMainColumn, getShellFrame, slotBox } from './dom.ts'
 import { localizeApiError, useI18n } from './i18n.tsx'
+import { fmtTurnCost } from './message-cost.tsx'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
-import { lowBalanceStore, quotaViewActiveStore, widgetVisibleStore } from './store.ts'
+import { lowBalanceStore, quotaViewActiveStore, widgetTabIdsStore, widgetVisibleStore } from './store.ts'
+import type { ConversationViewTab, ConversationViewsSource } from './views.ts'
 
 const MARGIN = 16
 
@@ -100,14 +112,29 @@ function cornerPos(corner: Corner, node: HTMLElement | null, bounds: Bounds): { 
   return { x: xRight, y: yBottom }
 }
 
-export function QuotaWidget(): ReactElement | null {
+interface SessionListState {
+  current?: string
+}
+
+export type UseSessionsHook = <T>(selector: (state: SessionListState) => T) => T
+
+export function QuotaWidget(props: {
+  useSessions: UseSessionsHook
+  views: ConversationViewsSource
+}): ReactElement | null {
   const { t } = useI18n()
+  const sessionId = props.useSessions(state => state.current)
   const [visible, setVisible] = useState(widgetVisibleStore.get())
   useEffect(() => widgetVisibleStore.subscribe(() => setVisible(widgetVisibleStore.get())), [])
   const [quotaViewActive, setQuotaViewActive] = useState(quotaViewActiveStore.get())
   useEffect(() => quotaViewActiveStore.subscribe(() => setQuotaViewActive(quotaViewActiveStore.get())), [])
   const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
   useEffect(() => lowBalanceStore.subscribe(() => setLowBalance(lowBalanceStore.get())), [])
+  const [selectedTabIds, setSelectedTabIds] = useState(widgetTabIdsStore.get())
+  useEffect(() => widgetTabIdsStore.subscribe(() => setSelectedTabIds(widgetTabIdsStore.get())), [])
+  const [viewTabs, setViewTabs] = useState<ConversationViewTab[]>(() => props.views.list())
+  useEffect(() => props.views.subscribe(() => setViewTabs(props.views.list())), [props.views])
+  const [activeViewId, setActiveViewId] = useState<string | null>(null)
 
   const cachedBalance = getCachedBalance()
   const [data, setData] = useState<BalanceData | null>(cachedBalance?.data ?? null)
@@ -129,6 +156,43 @@ export function QuotaWidget(): ReactElement | null {
   }
   const [usage, setUsage] = useState(readUsage)
   useEffect(() => subscribeUsage(() => setUsage(readUsage())), [])
+
+  const readSessionUsage = (id: string | undefined): SessionUsageData | null => {
+    if (id === undefined) return null
+    const response = getCachedSessionUsage(id)
+    return response?.ok === true ? response.data ?? null : null
+  }
+  const [sessionUsage, setSessionUsage] = useState<SessionUsageData | null>(() => readSessionUsage(sessionId))
+  useEffect(() => {
+    setSessionUsage(readSessionUsage(sessionId))
+    if (sessionId === undefined) return
+    const unsubscribe = subscribeSessionUsage(sessionId, () => setSessionUsage(readSessionUsage(sessionId)))
+    void fetchSessionUsage(sessionId)
+    return unsubscribe
+  }, [sessionId])
+
+  // The root-scoped overlay does not receive the session's active view store.
+  // Read the host's semantic tablist instead and map its selected button by
+  // index to the same live slot ledger used to build that tablist.
+  useLayoutEffect(() => {
+    const viewIds = viewTabs.map(tab => tab.id)
+    const read = (): void => {
+      const next = getActiveConversationViewId(getShellFrame(rootRef.current), viewIds)
+      setActiveViewId(previous => previous === next ? previous : next)
+    }
+    read()
+    const frame = getShellFrame(rootRef.current)
+    let observer: MutationObserver | null = null
+    if (frame !== null && typeof MutationObserver === 'function') {
+      observer = new MutationObserver(read)
+      observer.observe(frame, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-selected'] })
+    }
+    const poll = setInterval(read, 1000)
+    return () => {
+      observer?.disconnect()
+      clearInterval(poll)
+    }
+  }, [sessionId, viewTabs])
 
   const load = async (showLoading: boolean, force = false): Promise<void> => {
     if (showLoading) setLoading(true)
@@ -295,6 +359,11 @@ export function QuotaWidget(): ReactElement | null {
 
   if (!visible) return null
 
+  const allowedOnActiveView = activeViewId === null
+    ? sessionId === undefined
+    : activeViewId !== 'balance' && (selectedTabIds === null || selectedTabIds.includes(activeViewId))
+  const hidden = quotaViewActive || !allowedOnActiveView
+
   const primary = data !== null && data.balances.length > 0 ? data.balances[0] : null
   const balanceValue = primary !== null ? Number(primary.total) : Number.NaN
   const low = lowBalance > 0 && Number.isFinite(balanceValue) && balanceValue < lowBalance
@@ -310,13 +379,24 @@ export function QuotaWidget(): ReactElement | null {
   const usageAgeText = ageMinutes === null || ageMinutes < 1
     ? t('widget.updatedNow')
     : t('widget.stale', { minutes: ageMinutes })
+  const sessionCostRow = sessionUsage === null ? null : (
+    <div className="dsh-quota-row" title={t('widget.sessionCostTitle')}>
+      <span className="dsh-quota-label">{t('widget.sessionCost')}</span>
+      <span className="dsh-quota-value">¥ {fmtTurnCost(sessionUsage.cost)}</span>
+    </div>
+  )
 
   let body: ReactElement | null = null
   if (!collapsed) {
     if (loading && data === null && error === null) {
-      body = <div className="dsh-quota-body">{t('widget.loading')}</div>
+      body = <div className="dsh-quota-body"><div>{t('widget.loading')}</div>{sessionCostRow}</div>
     } else if (error !== null && data === null) {
-      body = <div className="dsh-quota-body dsh-quota-error">{localizeApiError(error, t, 'error.query')}</div>
+      body = (
+        <div className="dsh-quota-body">
+          <div className="dsh-quota-error">{localizeApiError(error, t, 'error.query')}</div>
+          {sessionCostRow}
+        </div>
+      )
     } else if (primary !== null) {
       body = (
         <div className="dsh-quota-body">
@@ -331,6 +411,7 @@ export function QuotaWidget(): ReactElement | null {
               <span className="dsh-quota-value">¥ {fmt(usage.data.summary.today.cost)}</span>
             </div>
           )}
+          {sessionCostRow}
           {data?.isAvailable === false && (
             <div className="dsh-quota-row">
               <span className="dsh-quota-label">{t('common.status')}</span>
@@ -340,7 +421,12 @@ export function QuotaWidget(): ReactElement | null {
         </div>
       )
     } else {
-      body = <div className="dsh-quota-body dsh-quota-error">{t('widget.noBalance')}</div>
+      body = (
+        <div className="dsh-quota-body">
+          <div className="dsh-quota-error">{t('widget.noBalance')}</div>
+          {sessionCostRow}
+        </div>
+      )
     }
   }
 
@@ -350,9 +436,9 @@ export function QuotaWidget(): ReactElement | null {
 
   return (
     <div
-      className={`dsh-quota-root${dragging ? ' dsh-quota-dragging' : ''}${quotaViewActive ? ' dsh-quota-root--dashboard' : ''}`}
+      className={`dsh-quota-root${dragging ? ' dsh-quota-dragging' : ''}${hidden ? ' dsh-quota-root--hidden' : ''}`}
       style={style}
-      aria-hidden={quotaViewActive}
+      aria-hidden={hidden}
     >
       <div
         ref={rootRef}
@@ -380,6 +466,7 @@ export function QuotaWidget(): ReactElement | null {
               onClick={() => {
                 void load(true, true)
                 void fetchUsage(true)
+                if (sessionId !== undefined) void fetchSessionUsage(sessionId, true)
               }}
             >
               ↻

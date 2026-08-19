@@ -127,17 +127,37 @@ export async function fetchUsage(force = false): Promise<UsageResponse> {
 }
 
 /**
- * Usage for exactly one session — the 「额度」tab's own conversation. Unlike
- * balance/usage this is deliberately **not** persisted to localStorage or
- * given a TTL cache: it is scoped to whichever session happens to be open,
- * would otherwise mean caching one entry per session for data that is only
- * ever read once (on tab mount) and must reflect that session's live state
- * rather than a stale snapshot. The only dedup is in-flight: two calls for
- * the same session id that overlap in time join a single request instead of
- * firing twice (covers React effects re-running before the first fetch lands).
- * `force` (the dashboard's refresh button) always fires its own request.
+ * Session usage stays memory-only: the widget, dashboard, and every visible
+ * turn-cost cell share the latest read without persisting one entry per
+ * session. A newly completed turn whose message id is absent from this cache
+ * triggers one fresh read; the in-flight map coalesces all cells mounting in
+ * the same transcript render.
  */
 const sessionUsageInflight = new Map<string, Promise<SessionUsageResponse>>()
+const sessionUsageCache = new Map<string, SessionUsageResponse>()
+const sessionUsageListeners = new Map<string, Set<() => void>>()
+
+export const getCachedSessionUsage = (sessionId: string): SessionUsageResponse | null =>
+  sessionUsageCache.get(sessionId) ?? null
+
+export const subscribeSessionUsage = (sessionId: string, fn: () => void): (() => void) => {
+  let listeners = sessionUsageListeners.get(sessionId)
+  if (listeners === undefined) {
+    listeners = new Set()
+    sessionUsageListeners.set(sessionId, listeners)
+  }
+  listeners.add(fn)
+  return () => {
+    listeners?.delete(fn)
+    if (listeners?.size === 0) sessionUsageListeners.delete(sessionId)
+  }
+}
+
+const publishSessionUsage = (sessionId: string, response: SessionUsageResponse): void => {
+  if (!response.ok) return
+  sessionUsageCache.set(sessionId, response)
+  for (const listener of [...(sessionUsageListeners.get(sessionId) ?? [])]) listener()
+}
 
 export async function fetchSessionUsage(sessionId: string, force = false): Promise<SessionUsageResponse> {
   if (typeof sessionId !== 'string' || sessionId === '') {
@@ -148,6 +168,10 @@ export async function fetchSessionUsage(sessionId: string, force = false): Promi
     if (inflight !== undefined) return inflight
   }
   const task = getJson<SessionUsageResponse>(`/api/dsh-usage-dashboard/session?id=${encodeURIComponent(sessionId)}`, 'no-store')
+    .then(response => {
+      publishSessionUsage(sessionId, response)
+      return response
+    })
   if (force) return task
   const tracked = task.finally(() => {
     if (sessionUsageInflight.get(sessionId) === tracked) sessionUsageInflight.delete(sessionId)

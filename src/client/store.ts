@@ -38,6 +38,15 @@ const isThreshold = (value: unknown): boolean =>
 /** Whether the floating balance widget is shown. */
 export const widgetVisibleStore = createStore<boolean>('widget.visible', isBoolean, true)
 
+const isWidgetTabIds = (value: unknown): boolean => value === null
+  || (Array.isArray(value) && value.every(id => typeof id === 'string' && id !== '')
+    && new Set(value).size === value.length)
+
+/** Conversation view ids on which the widget is allowed to appear. `null`
+ * means "all available views" and preserves the pre-setting default; once a
+ * user customizes the list, newly installed plugin tabs arrive unchecked. */
+export const widgetTabIdsStore = createStore<string[] | null>('widget.tabIds', isWidgetTabIds, null)
+
 /** Balance (in the account's own currency) below which both surfaces warn.
  *  0 turns the warning off. */
 export const lowBalanceStore = createStore<number>('alert.lowBalance', isThreshold, 10)

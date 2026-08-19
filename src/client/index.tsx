@@ -9,8 +9,10 @@ import { fetchBalance, fetchUsage } from './api.ts'
 import { BalanceDashboard } from './dashboard.tsx'
 import { LocaleProvider, type Translate } from './i18n.tsx'
 import { en, NS, zh } from './locales.ts'
+import { MessageCost } from './message-cost.tsx'
 import { css } from './styles.ts'
-import { QuotaWidget } from './widget.tsx'
+import { QuotaWidget, type UseSessionsHook } from './widget.tsx'
+import { conversationViewsSource } from './views.ts'
 
 /** Plugin identity for the client bundle. */
 export const name = 'dsh-usage-dashboard'
@@ -25,6 +27,7 @@ export const inject = ['slots', 'locale']
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-usage-dashboard: browser dictionaries')
   const t = ctx.locale.bind(NS)
+  const views = conversationViewsSource(ctx.slots)
   // One stylesheet for the whole plugin; the module loader claims and removes
   // plugin-owned style tags on unload.
   if (typeof document !== 'undefined') {
@@ -46,9 +49,26 @@ export function apply(ctx: ClientContext): void {
 
   ctx.slots.inject('shell.overlay', () => ctx.slots.register(
     { name: 'shell.overlay', id: 'deepseek-quota', order: 1000, locale: NS, label: () => t('widget.title') },
-    ({ t: slotT }: { t: Translate }) => (
+    ({ t: slotT, useSessions }: { t: Translate; useSessions: UseSessionsHook }) => (
       <LocaleProvider t={slotT}>
-        <ErrorBoundary t={slotT} silent><QuotaWidget /></ErrorBoundary>
+        <ErrorBoundary t={slotT} silent><QuotaWidget useSessions={useSessions} views={views} /></ErrorBoundary>
+      </LocaleProvider>
+    ),
+  ))
+
+  ctx.slots.inject('conversation.chat.assistant-actions', () => ctx.slots.register(
+    {
+      name: 'conversation.chat.assistant-actions',
+      id: 'dsh-usage-turn-cost',
+      order: 5,
+      locale: NS,
+      label: () => t('messageCost.label'),
+    },
+    ({ t: slotT, sessionId, messageId }: { t: Translate; sessionId: string; messageId: string }) => (
+      <LocaleProvider t={slotT}>
+        <ErrorBoundary t={slotT} silent>
+          <MessageCost sessionId={sessionId} messageId={messageId} />
+        </ErrorBoundary>
       </LocaleProvider>
     ),
   ))
@@ -64,7 +84,7 @@ export function apply(ctx: ClientContext): void {
     // session card only when it actually has one, never throws either way.
     ({ t: slotT, sessionId }: { t: Translate; sessionId?: string }) => (
       <LocaleProvider t={slotT}>
-        <ErrorBoundary t={slotT}><BalanceDashboard sessionId={sessionId} /></ErrorBoundary>
+        <ErrorBoundary t={slotT}><BalanceDashboard sessionId={sessionId} views={views} /></ErrorBoundary>
       </LocaleProvider>
     ),
   ))

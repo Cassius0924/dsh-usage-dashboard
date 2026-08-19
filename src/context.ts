@@ -43,6 +43,11 @@ export interface SessionEventFace {
   data?: {
     usage?: TokenUsageFace
     header?: { config?: { provider?: string; model?: string } }
+    /** Stable turn/step identity and the finalized message id carried by
+     * modern `assistant/message` events. Optional for legacy logs. */
+    turn?: number
+    step?: number
+    message?: { id?: string }
     /** Payload of a `session/title` event. */
     title?: string
   }

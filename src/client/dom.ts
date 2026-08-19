@@ -60,3 +60,20 @@ export function getComposerElement(frame: HTMLElement | null): HTMLElement | nul
   if (frame === null) return null
   return slotElement(frame, 'conversation.composer.dock', 'ancestor')
 }
+
+/** Resolve the active `conversation.view` id from the host's semantic tablist.
+ * The DOM intentionally carries no view id, but it renders buttons in the
+ * exact order of the slot ledger. Indexing into that same live ledger avoids
+ * translated-label matching and remains compatible with third-party tabs. */
+export function getActiveConversationViewId(
+  frame: HTMLElement | null,
+  viewIds: string[],
+): string | null {
+  if (viewIds.length === 0) return null
+  const header = frame === null ? null : slotElement(frame, 'conversation.session.header', 'child')
+  const tablist = header?.querySelector('[role="tablist"]') ?? null
+  if (tablist === null) return viewIds[0] ?? null
+  const tabs = [...tablist.querySelectorAll('[role="tab"]')]
+  const activeIndex = tabs.findIndex(tab => tab.getAttribute('aria-selected') === 'true')
+  return activeIndex < 0 ? viewIds[0] ?? null : viewIds[activeIndex] ?? null
+}

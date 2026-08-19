@@ -165,7 +165,17 @@ function summarize(dayMap: Map<string, Bucket>, now: Date): UsageSummary {
  */
 function addUsageEvent(
   events: SessionEventFace[] | undefined,
-  onEvent: (time: number, input: number, output: number, cache: number, reasoning: number, provider: string, model: string) => void,
+  onEvent: (
+    time: number,
+    input: number,
+    output: number,
+    cache: number,
+    reasoning: number,
+    provider: string,
+    model: string,
+    messageId: string | undefined,
+    turn: number | undefined,
+  ) => void,
 ): Pick<UsageCoverage, 'usageRecords' | 'skippedRecords'> {
   const result = { usageRecords: 0, skippedRecords: 0 }
   if (events === undefined) return result
@@ -190,7 +200,11 @@ function addUsageEvent(
       continue
     }
     const [input = 0, output = 0, cache = 0, reasoning = 0] = values
-    onEvent(ev.time, input, output, cache, reasoning, provider, model)
+    const rawMessageId = ev.data?.message?.id
+    const messageId = typeof rawMessageId === 'string' && rawMessageId !== '' ? rawMessageId : undefined
+    const rawTurn = ev.data?.turn
+    const turn = typeof rawTurn === 'number' && Number.isFinite(rawTurn) ? rawTurn : undefined
+    onEvent(ev.time, input, output, cache, reasoning, provider, model, messageId, turn)
     result.usageRecords += 1
   }
   return result
@@ -493,8 +507,9 @@ export async function fetchSessionUsage(persistence: SessionPersistenceFace | un
   let calls = 0
   let firstActive: number | null = null
   let lastActive: number | null = null
+  const turnTotals = new Map<string, { messageId: string; total: number; cost: number; calls: number }>()
 
-  addUsageEvent(events, (time, input, output, cache, _reasoning, provider, model) => {
+  addUsageEvent(events, (time, input, output, cache, _reasoning, provider, model, messageId, turn) => {
     const modelKey = `${provider}/${model}`
     const eventCost = costOf(time, model, input, cache, output)
     const eventTotal = input + output + cache
@@ -504,6 +519,18 @@ export async function fetchSessionUsage(persistence: SessionPersistenceFace | un
     calls += 1
     if (firstActive === null || time < firstActive) firstActive = time
     if (lastActive === null || time > lastActive) lastActive = time
+    if (messageId !== undefined) {
+      // A turn may make several model calls while tools run. The chat renders
+      // one action strip beside its final assistant message, so keep replacing
+      // the address while accumulating every step's usage under the turn id.
+      const key = turn === undefined ? `message:${messageId}` : `turn:${turn}`
+      const aggregate = turnTotals.get(key) ?? { messageId, total: 0, cost: 0, calls: 0 }
+      aggregate.messageId = messageId
+      aggregate.total += eventTotal
+      aggregate.cost += eventCost
+      aggregate.calls += 1
+      turnTotals.set(key, aggregate)
+    }
   })
 
   const models: SessionModelUsage[] = [...modelTotals.entries()]
@@ -535,6 +562,7 @@ export async function fetchSessionUsage(persistence: SessionPersistenceFace | un
       firstActive,
       lastActive,
       models,
+      turns: [...turnTotals.values()],
     },
   }
 }
