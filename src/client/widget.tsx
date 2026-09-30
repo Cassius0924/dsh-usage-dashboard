@@ -23,6 +23,7 @@ import { getActiveConversationViewId, getMainColumn, getShellFrame, slotBox } fr
 import { localizeApiError, useI18n } from './i18n.tsx'
 import { fmtTurnCost } from './message-cost.tsx'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
+import { currentSessionIdOf, type SessionListStateFace } from './sessions.ts'
 import { lowBalanceStore, quotaViewActiveStore, widgetTabIdsStore, widgetVisibleStore } from './store.ts'
 import type { ConversationViewTab, ConversationViewsSource } from './views.ts'
 
@@ -112,18 +113,14 @@ function cornerPos(corner: Corner, node: HTMLElement | null, bounds: Bounds): { 
   return { x: xRight, y: yBottom }
 }
 
-interface SessionListState {
-  current?: string
-}
-
-export type UseSessionsHook = <T>(selector: (state: SessionListState) => T) => T
+export type UseSessionsHook = <T>(selector: (state: SessionListStateFace) => T) => T
 
 export function QuotaWidget(props: {
   useSessions: UseSessionsHook
   views: ConversationViewsSource
 }): ReactElement | null {
   const { t } = useI18n()
-  const sessionId = props.useSessions(state => state.current)
+  const sessionId = props.useSessions(currentSessionIdOf)
   const [visible, setVisible] = useState(widgetVisibleStore.get())
   useEffect(() => widgetVisibleStore.subscribe(() => setVisible(widgetVisibleStore.get())), [])
   const [quotaViewActive, setQuotaViewActive] = useState(quotaViewActiveStore.get())

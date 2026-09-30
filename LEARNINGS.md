@@ -191,3 +191,11 @@
   重挂载 view 但不重置 scrollTop，于是从滚到一半的 Chat 切进「额度」会停在设置卡片附近而不是账户余额。修复：
   在 view 根节点 `useLayoutEffect`（绘制前执行）里 `rootRef.current.closest('[data-conversation-scroll]').scrollTop = 0`；
   deps 带 `sessionId`，覆盖宿主复用同一 view 实例切换会话的情况。
+
+- **宿主换代不只重构 host 服务接口，客户端 hook 的 state 形状也会静默换代——数据驱动的行/区块会无声消
+  失，而不是报错**（轮次 52 踩到）：`useSessions` 的 selector state 在宿主 0.1.6 起删掉了扁平 `current`
+  字段（0.1.5 还有），悬浮窗的「当前会话」行因此整行不渲染、控制台 0 错误——只在升级后看「有没有报错」
+  永远发现不了这类坏点。教训：① 从宿主 hook/state 取的值同样要按代 feature-detect（字段全声明可选，
+  新旧两代取法并存）；② 「当前会话」的正统信号 = `byId[*].retainedBy.mainView > 0`，宿主的 DocumentTitle、
+  侧栏选中（`containsCurrent`）、快捷键用的是同一字段，不要自造推断；③ 宿主升级后的验收必须按「功能面
+  清单」逐面看**数据**（行/值在不在），probe 已加悬浮窗断言（存在性 + 会话行文本 + 额度 tab 隐藏/恢复）。

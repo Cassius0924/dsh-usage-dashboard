@@ -93,6 +93,20 @@
 
 ## 已完成（续）
 
+- （轮次 52）`fix(widget)`: 适配宿主 0.1.6+ 的「当前会话」信号（`useSessions` 的 `current` 字段被移除）。
+  - 背景：本机 dsh 升到 0.2.0-rc.2（含桌面版的那次发布）后全面实测插件四个面——host API ×3、额度 tab、
+    单条消息成本 chip、悬浮窗——唯一坏点是悬浮窗的「当前会话」行整行消失。根因：
+    `props.useSessions(state => state.current)` 依赖的扁平 `current` 字段自宿主 0.1.6 起已从
+    `SessionListState` 移除（0.1.5 还有），selector 恒返回 undefined，该行静默不渲染（无任何报错，
+    控制台 0 错误）——即 9/24 的 0.1.7 升级轮就埋下了，当时 probe 没覆盖悬浮窗内容所以未发现。
+  - 改法：新增 `src/client/sessions.ts` 的 `currentSessionIdOf(state)`——0.1.6+ 走宿主自己的正统信号
+    `byId[*].retainedBy.mainView > 0`（宿主的 DocumentTitle / 侧栏选中 / 快捷键读的是同一字段），
+    旧宿主回落 `state.current`；两代字段都声明可选，跨宿主升级不再需要重发插件。
+  - Verify：新增 `test/sessions.test.ts`（两代形状 + 空态；60/60 通过）；typecheck / build exit 0；
+    纯 client 改动、无需重启 dsh。Playwright 实测（0.2.0-rc.2）：悬浮窗打开会话后显示
+    「当前会话 ¥ 0.3368」，切「额度」tab 隐藏、切回「对话」恢复且数值保持；四个面复测全绿
+    （host 三接口 ok、14 张统计卡、6 个消息成本 chip、footer v0.6.0、控制台 0 错误）。
+
 - （轮次 51）`fix(pricing)`: 计价说明跟进官方 2026-09-10 调价（用户要求「更新计价说明」）。
   - 官方在 2026-09-10 12:00 起下调 Flash 系列（V4.1-Flash：高峰 0.04/2/8，闲时 0.02/1/4），
     并把高峰时段收紧为**周一至周五**；2026-09-14 12:00 起 `deepseek-v4-pro` 请求由 V4.1-Flash
