@@ -93,6 +93,20 @@
 
 ## 已完成（续）
 
+- （轮次 53）`fix(balance)`: 账号登录（无 API Key）也能刷新余额，对应 issue #3。
+  - 背景：余额只走 `credentials.resolve('DEEPSEEK_API_KEY')` → `GET /user/balance`，用 DSH 账号登录
+    （`deepseekAccount`，浏览器授权）但没配 Key 的用户刷新失败，横幅只提示「未配置 DEEPSEEK_API_KEY」，
+    展示缓存值；且「账号接口不可用」和「没配 Key」两种情况被混成一条错误。
+  - 改法：`fetchBalance(credentials, account?)` 优先调 `deepseekAccount.getBalance()`（可选服务，经
+    `ctx.get()` 读，不进 `inject`——只配 Key 的宿主照常加载）；`ready` 时把充值钱包（`value`）与赠金钱包
+    （`bonusWallets`）按币种折算成既有的 total/toppedUp/granted 形状。未登录（`null`）或 `failed` 时回退
+    API Key 路径；两条路都不通时才报错，账号接口失败单独给
+    「账号余额接口不可用，且未配置 DEEPSEEK_API_KEY」（zh/en 双份 + `localizeApiError` 映射），不再误导去配 Key。
+  - Verify：`pnpm test` 62/62（新增 account ready 折算 / failed / signed-out / 账号失败回退 Key 四段）；
+    typecheck / build exit 0；重启 dsh 后 curl `/api/dsh-usage-dashboard/balance?refresh=1` 返回
+    `14.12 CNY`（本机账号未登录 → 走 Key 回退，证明回退链没坏）；Playwright 实测「额度」tab 14 张统计卡、
+    余额 14.12 CNY、`CONSOLE_ERRORS=0`、footer v0.6.0。
+
 - （轮次 52）`fix(widget)`: 适配宿主 0.1.6+ 的「当前会话」信号（`useSessions` 的 `current` 字段被移除）。
   - 背景：本机 dsh 升到 0.2.0-rc.2（含桌面版的那次发布）后全面实测插件四个面——host API ×3、额度 tab、
     单条消息成本 chip、悬浮窗——唯一坏点是悬浮窗的「当前会话」行整行消失。根因：

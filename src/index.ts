@@ -35,7 +35,10 @@ const USAGE_TTL_MS = 5 * 60_000
  * @param ctx - host Cordis context.
  */
 export function apply(ctx: HostContext): void {
-  const balanceMemo = memoize(BALANCE_TTL_MS, () => fetchBalance(ctx.credentials))
+  // `deepseekAccount` is optional (API-key-only hosts never mount it), so it
+  // is read through `get()` rather than declared in `inject` — a required
+  // service would keep this plugin from loading at all on those hosts.
+  const balanceMemo = memoize(BALANCE_TTL_MS, () => fetchBalance(ctx.credentials, ctx.get('deepseekAccount')))
   const usageMemo = memoize(USAGE_TTL_MS, () => fetchUsage(ctx.sessionPersistence))
 
   ctx.effect(() => ctx.webServer.register({

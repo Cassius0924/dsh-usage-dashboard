@@ -30,6 +30,7 @@ export function localizeApiError(message: string | undefined, t: Translate, fall
   if (message === '余额加载失败') return t('error.balanceLoad')
   if (message === '用量加载失败') return t('error.usageLoad')
   if (message === '未配置 DEEPSEEK_API_KEY（可在「设置 → 模型」中填写）') return t('error.noApiKey')
+  if (message === '账号余额接口不可用，且未配置 DEEPSEEK_API_KEY') return t('error.accountBalanceUnavailable')
   if (message === '解析余额响应失败') return t('error.balanceParse')
   if (message === '会话持久化服务不可用') return t('error.persistenceUnavailable')
   if (message === '缺少会话 id') return t('error.missingSessionId')

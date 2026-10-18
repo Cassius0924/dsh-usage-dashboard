@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { CredentialsFace, SessionEventFace, SessionPersistenceFace } from '../src/context.ts'
+import type { CredentialsFace, DeepSeekAccountFace, SessionEventFace, SessionPersistenceFace } from '../src/context.ts'
 import { isValidSessionId } from '../src/contract.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra, estimateImageTokens } from '../src/pricing.ts'
 import { fetchBalance, fetchSessionUsage, fetchUsage } from '../src/usage.ts'
@@ -335,6 +335,61 @@ test('balance fetch resolves credentials and maps the DeepSeek response', async 
         granted: '2.50',
         toppedUp: '40.00',
       }],
+    },
+  })
+})
+
+test('balance prefers the signed-in account and names an account failure instead of asking for a key', async t => {
+  const originalFetch = globalThis.fetch
+  t.after(() => { globalThis.fetch = originalFetch })
+  let fetchCalls = 0
+  globalThis.fetch = (async () => {
+    fetchCalls += 1
+    return new Response('{}', { status: 200 })
+  }) as typeof fetch
+
+  // Recharge and granted wallets fold into one entry per currency; no key and
+  // no credentials service are needed for this path.
+  assert.deepEqual(await fetchBalance(undefined, {
+    getBalance: async () => ({
+      status: 'ready',
+      value: [{ currency: 'CNY', balance: '40.00' }],
+      bonusWallets: [{ currency: 'CNY', balance: '2.50' }, { currency: 'USD', balance: '1.25' }],
+    }),
+  }), {
+    ok: true,
+    data: {
+      isAvailable: true,
+      balances: [
+        { currency: 'CNY', total: '42.50', granted: '2.50', toppedUp: '40.00' },
+        { currency: 'USD', total: '1.25', granted: '1.25', toppedUp: '0.00' },
+      ],
+    },
+  })
+  assert.equal(fetchCalls, 0)
+
+  const noKey: CredentialsFace = { resolve: async () => undefined }
+  assert.deepEqual(await fetchBalance(noKey, { getBalance: async () => ({ status: 'failed' }) }), {
+    ok: false,
+    error: '账号余额接口不可用，且未配置 DEEPSEEK_API_KEY',
+  })
+  assert.deepEqual(await fetchBalance(noKey, { getBalance: async () => null }), {
+    ok: false,
+    error: '未配置 DEEPSEEK_API_KEY（可在「设置 → 模型」中填写）',
+  })
+
+  // A failing account still falls back to the key, so API-key users keep working.
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    is_available: true,
+    balance_infos: [{ currency: 'CNY', total_balance: '7.00', granted_balance: '0.00', topped_up_balance: '7.00' }],
+  }), { status: 200 })) as typeof fetch
+  assert.deepEqual(await fetchBalance({ resolve: async () => ({ value: 'test-key', source: 'test' }) }, {
+    getBalance: async () => { throw new Error('platform 403') },
+  }), {
+    ok: true,
+    data: {
+      isAvailable: true,
+      balances: [{ currency: 'CNY', total: '7.00', granted: '0.00', toppedUp: '7.00' }],
     },
   })
 })

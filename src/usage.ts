@@ -1,14 +1,16 @@
 /**
  * Balance and usage data sources.
  *
- * - Balance: DeepSeek API `GET /user/balance` with the key resolved through
- *   the credentials service (`DEEPSEEK_API_KEY`).
+ * - Balance: the signed-in DeepSeek account through the optional
+ *   `deepseekAccount` service (`getBalance`, no API key needed), falling back
+ *   to `GET /user/balance` with the key resolved through the credentials
+ *   service (`DEEPSEEK_API_KEY`).
  * - Usage: token usage folded from the DSH session logs (`sessionPersistence`),
  *   one record per `assistant/message` event, bucketed by local day / hour.
  */
 import { isValidSessionId, USAGE_WINDOW_DAYS } from './contract.ts'
-import type { BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, SessionModelUsage, SessionUsageResponse, UsageCoverage, UsageData, UsageResponse, UsageSummary, UsageWindowDays, VisionDayPoint, VisionSession, VisionStats } from './contract.ts'
-import type { ContentBlockFace, CredentialsFace, ImageAttachmentFace, SessionEventFace, SessionHeaderFace, SessionPersistenceFace } from './context.ts'
+import type { BalanceData, BalanceInfo, BalanceResponse, ModelSeriesPoint, ModelUsage, PeakSplit, PeriodUsage, SessionCost, SessionModelUsage, SessionUsageResponse, UsageCoverage, UsageData, UsageResponse, UsageSummary, UsageWindowDays, VisionDayPoint, VisionSession, VisionStats } from './contract.ts'
+import type { AccountClientFace, AccountWalletFace, ContentBlockFace, CredentialsFace, DeepSeekAccountFace, ImageAttachmentFace, SessionEventFace, SessionHeaderFace, SessionPersistenceFace } from './context.ts'
 import { cacheSavingOf, costOf, costUnderPeakEra, estimateImageTokens, isPeak, pricingInfo } from './pricing.ts'
 
 const pad2 = (n: number): string => (n < 10 ? `0${n}` : String(n))
@@ -17,7 +19,69 @@ function errorMessage(err: unknown): string {
   return (err as { message?: string } | null)?.message ?? String(err)
 }
 
-export async function fetchBalance(credentials: CredentialsFace | undefined): Promise<BalanceResponse> {
+/** Identity the account service forwards to Platform as client headers. The
+ *  host has no browser identity; wallet totals don't depend on it, so the
+ *  desktop build's version (when the host environment carries one) and the
+ *  host's own UTC offset are enough. */
+const ACCOUNT_CLIENT: AccountClientFace = {
+  version: process.env.DSH_CLIENT_VERSION ?? '0.0.0',
+  locale: 'zh-CN',
+  timezoneOffsetSeconds: -new Date().getTimezoneOffset() * 60,
+}
+
+/** The account service reports the recharge (`value`) and granted
+ *  (`bonusWallets`) wallets separately; the card shows one total per currency
+ *  with that same breakdown, so fold the two lists into its shape. */
+function accountBalances(
+  toppedUpWallets: readonly AccountWalletFace[],
+  grantedWallets: readonly AccountWalletFace[],
+): BalanceInfo[] {
+  const byCurrency = new Map<string, { total: number; granted: number; toppedUp: number }>()
+  const add = (wallets: readonly AccountWalletFace[], field: 'toppedUp' | 'granted'): void => {
+    for (const wallet of wallets) {
+      const currency = wallet.currency ?? ''
+      const amount = Number(wallet.balance ?? '0')
+      if (currency === '' || !Number.isFinite(amount)) continue
+      const acc = byCurrency.get(currency) ?? { total: 0, granted: 0, toppedUp: 0 }
+      acc[field] += amount
+      acc.total += amount
+      byCurrency.set(currency, acc)
+    }
+  }
+  add(toppedUpWallets, 'toppedUp')
+  add(grantedWallets, 'granted')
+  return [...byCurrency].map(([currency, acc]) => ({
+    currency,
+    total: acc.total.toFixed(2),
+    granted: acc.granted.toFixed(2),
+    toppedUp: acc.toppedUp.toFixed(2),
+  }))
+}
+
+/** Query the signed-in account's wallets. `signed-out` (the service's own
+ *  null) and `failed` (Platform rejected the query, or the service threw) both
+ *  let the caller fall back to the API key; only `failed` is worth surfacing
+ *  when no key exists. */
+async function readAccountBalance(account: DeepSeekAccountFace): Promise<
+  { ok: true; data: BalanceData } | { ok: false; reason: 'signed-out' | 'failed' }
+> {
+  try {
+    const result = await account.getBalance(ACCOUNT_CLIENT)
+    if (result === null) return { ok: false, reason: 'signed-out' }
+    if (result.status !== 'ready') return { ok: false, reason: 'failed' }
+    const balances = accountBalances(result.value ?? [], result.bonusWallets ?? [])
+    return { ok: true, data: { isAvailable: balances.length > 0, balances } }
+  } catch {
+    return { ok: false, reason: 'failed' }
+  }
+}
+
+export async function fetchBalance(
+  credentials: CredentialsFace | undefined,
+  account?: DeepSeekAccountFace,
+): Promise<BalanceResponse> {
+  const fromAccount = account === undefined ? undefined : await readAccountBalance(account)
+  if (fromAccount?.ok === true) return { ok: true, data: fromAccount.data }
   if (credentials === undefined) return { ok: false, error: '凭证服务不可用' }
   let cred: { value: string } | undefined
   try {
@@ -26,7 +90,15 @@ export async function fetchBalance(credentials: CredentialsFace | undefined): Pr
     return { ok: false, error: `读取 API Key 失败：${errorMessage(err)}` }
   }
   if (cred === undefined || cred.value === '') {
-    return { ok: false, error: '未配置 DEEPSEEK_API_KEY（可在「设置 → 模型」中填写）' }
+    // Report the reason that actually applies: a failing account endpoint is
+    // not the same as no credential at all, and telling a signed-in user to
+    // configure an API key they don't need hides the real problem.
+    return {
+      ok: false,
+      error: fromAccount?.reason === 'failed'
+        ? '账号余额接口不可用，且未配置 DEEPSEEK_API_KEY'
+        : '未配置 DEEPSEEK_API_KEY（可在「设置 → 模型」中填写）',
+    }
   }
   let res: Response
   try {

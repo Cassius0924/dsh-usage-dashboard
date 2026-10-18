@@ -135,7 +135,7 @@ dsh plugin --profile web add ./path/to/dsh-usage-dashboard
 
 前提：
 
-- 已配置 `DEEPSEEK_API_KEY`（「设置 → 模型」里填，或放在 `$DSH_HOME/.credentials.yaml`）——余额接口要用。
+- 余额优先走 DSH 的**账号登录**（浏览器授权，不需要 API Key）；未登录账号时才回退到 `DEEPSEEK_API_KEY`（「设置 → 模型」里填，或放在 `$DSH_HOME/.credentials.yaml`）。
 - 本机有 pnpm（`dsh plugin` 是 pnpm 的转发器）。
 
 装好后打开 GUI，**进入任意一个会话**（「额度」tab 挂在 `conversation.view` 上，New Session 首页没有 tab 栏），顶部就能看到 `Chat / Trajectory / 额度`。

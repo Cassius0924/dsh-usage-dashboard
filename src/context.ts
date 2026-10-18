@@ -24,6 +24,34 @@ export interface CredentialsFace {
   resolve(ref: string): Promise<{ value: string; source: string } | undefined>
 }
 
+/** One Platform wallet as returned by `deepseekAccount.getBalance`. */
+export interface AccountWalletFace {
+  currency?: string
+  balance?: string
+}
+
+/** Balance outcome of `deepseekAccount.getBalance`: `ready` carries the
+ *  recharge (`value`) and granted (`bonusWallets`) wallets, `failed` means the
+ *  Platform query was rejected, `null` (the whole result) means signed out. */
+export interface AccountBalanceFace {
+  status?: string
+  value?: readonly AccountWalletFace[]
+  bonusWallets?: readonly AccountWalletFace[]
+}
+
+/** Identity the account service turns into Platform request headers. */
+export interface AccountClientFace {
+  version: string
+  locale: string
+  timezoneOffsetSeconds: number
+}
+
+/** Structural face of the host `deepseekAccount` service. Optional: hosts
+ *  that only do API-key auth never mount the account plugin. */
+export interface DeepSeekAccountFace {
+  getBalance(client: AccountClientFace): Promise<AccountBalanceFace | null>
+}
+
 /** Structural face of the `sessionPersistence` service. */
 export interface SessionHeaderFace {
   id?: string
@@ -99,4 +127,7 @@ export interface HostContext extends Context {
   webServer: WebServerFace
   credentials: CredentialsFace
   sessionPersistence: SessionPersistenceFace
+  /** Present only when the host mounts DSH's DeepSeek account plugin. Read it
+   *  through `ctx.get()` so API-key-only deployments keep loading. */
+  deepseekAccount?: DeepSeekAccountFace
 }
