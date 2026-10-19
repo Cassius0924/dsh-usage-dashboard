@@ -132,7 +132,7 @@ function Period(props: {
           <Delta current={period.cost} previous={previous.cost} label={compare} />
         )}
       </div>
-      <div className="dq-period-cost">¥ {fmt(period.cost)}</div>
+      <div className="dq-period-cost">¥{fmt(period.cost)}</div>
       <div className="dq-period-sub">{t('period.volume', {
         tokens: fmtCompact(period.total, locale),
         calls: t('common.calls', { count: fmtInt(period.calls) }),
@@ -166,7 +166,7 @@ function BudgetMeter(props: { spent: number; budget: number; onConfigure: () => 
     <div className={`dq-budget dq-budget--${snapshot.status}`}>
       <div className="dq-budget-head">
         <span className="dq-budget-title">{t('budget.title')}</span>
-        <span className="dq-budget-amount">¥ {fmt(snapshot.spent)} / ¥ {fmt(snapshot.budget)}</span>
+        <span className="dq-budget-amount">¥{fmt(snapshot.spent)} / ¥{fmt(snapshot.budget)}</span>
       </div>
       <div
         className="dq-budget-track"
@@ -284,6 +284,17 @@ function CoverageDiagnostics(props: { coverage: UsageCoverage }): ReactElement {
         )}
       </div>
     </details>
+  )
+}
+
+/** Section heading: a short title, plus an optional quiet caption on the same line
+ *  (scope / caveat such as 「近 30 天」「费用为估算」) so the title itself stays short. */
+function CardTitle(props: { children: ReactNode; caption?: ReactNode; srOnly?: boolean }): ReactElement {
+  return (
+    <h2 className={`dq-card-title${props.srOnly === true ? ' dq-sr-only' : ''}`}>
+      {props.children}
+      {props.caption !== undefined && <span className="dq-card-caption">{props.caption}</span>}
+    </h2>
   )
 }
 
@@ -419,12 +430,23 @@ function SessionUsageCard(props: { data: SessionUsageData }): ReactElement {
   return (
     <>
       <div className="dq-balance-grid">
-        <Stat label={t('sessionUsage.cost')}><div className="dq-stat-value">¥ {fmt(data.cost)}</div></Stat>
+        <Stat label={t('sessionUsage.cost')}><div className="dq-stat-value">¥{fmt(data.cost)}</div></Stat>
         <Stat label={t('sessionUsage.tokens')}><div className="dq-stat-value">{fmtCompact(data.total, locale)}</div></Stat>
         <Stat label={t('sessionUsage.calls')}><div className="dq-stat-value">{fmtInt(data.calls)}</div></Stat>
       </div>
-      {range !== null && <p className="dq-session-sub">{t('sessionUsage.range', { range })}</p>}
-      {data.models.length > 0 && (
+      {/* One model = the breakdown would repeat the totals above; fold it into one meta line. */}
+      <div className="dq-session-meta">
+        {range !== null && <p className="dq-session-sub">{t('sessionUsage.range', { range })}</p>}
+        {data.models.length === 1 && (
+          <p className="dq-session-sub">{t('sessionUsage.single', {
+            model: data.models[0].model !== '' ? data.models[0].model : t('common.unknownModel'),
+            input: fmtCompact(data.models[0].input, locale),
+            output: fmtCompact(data.models[0].output, locale),
+            cache: fmtCompact(data.models[0].cache, locale),
+          })}</p>
+        )}
+      </div>
+      {data.models.length > 1 && (
         <div className="dq-rank">
           {data.models.map((m, index) => {
             const key = m.provider !== '' ? `${m.provider}/${m.model}` : (m.model !== '' ? m.model : `model-${index}`)
@@ -439,7 +461,7 @@ function SessionUsageCard(props: { data: SessionUsageData }): ReactElement {
                     {name}
                   </span>
                   <span className="dq-rank-cost">
-                    ¥ {fmt(m.cost)}
+                    ¥{fmt(m.cost)}
                     <span className="dq-rank-share">{(share * 100).toFixed(1)}%</span>
                   </span>
                 </div>
@@ -490,11 +512,11 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
         </div>
         <div className="dq-stat">
           <div className="dq-stat-label">{t('cache.saved')}</div>
-          <div className="dq-stat-value">¥ {fmt(totals.cacheSavings)}</div>
+          <div className="dq-stat-value">¥{fmt(totals.cacheSavings)}</div>
         </div>
         <div className="dq-stat">
           <div className="dq-stat-label">{t('cache.allMiss')}</div>
-          <div className="dq-stat-value dq-muted-value">¥ {fmt(wouldHaveCost)}</div>
+          <div className="dq-stat-value dq-muted-value">¥{fmt(wouldHaveCost)}</div>
         </div>
       </div>
       <div className="dq-cache-track" role="img" aria-label={t('cache.aria', { hit: (rate * 100).toFixed(1), miss: ((1 - rate) * 100).toFixed(1) })}>
@@ -553,7 +575,7 @@ function VisionCard(props: {
         </Stat>
         <Stat label={t('vision.cost')}>
           <div className="dq-stat-value">
-            ¥ {fmt(vision.cost)}
+            ¥{fmt(vision.cost)}
             {costShare > 0 && <span className="dq-vision-share">{t('vision.costShare', { percent: costShare.toFixed(1) })}</span>}
           </div>
         </Stat>
@@ -612,7 +634,7 @@ function PeakCard(props: { split: PeakSplit; pricing: PricingInfo }): ReactEleme
         <div className="dq-stat">
           <div className="dq-stat-label">{t('peak.shift')}</div>
           <div className="dq-stat-value">
-            ¥ {fmt(split.offPeakEraCost)}
+            ¥{fmt(split.offPeakEraCost)}
             <span className="dq-peak-delta dq-peak-delta--save">{t('peak.saving', { amount: fmt(shiftSaving) })}</span>
           </div>
         </div>
@@ -704,11 +726,11 @@ function SessionRanking(props: { sessions: SessionCost[]; count: number; totalCo
               onToggle={e => { if (e.currentTarget.open) loadDetail(s.id) }}
             >
               <summary className="dq-session-summary">
-                <span className="dq-session-chevron" aria-hidden="true">▸</span>
+                <span className="dq-session-chevron" aria-hidden="true" />
                 <div className="dq-session-summary-body">
                   <div className="dq-session-head">
                     <span className="dq-session-title" title={`${s.title}\n${s.id}`}>{s.title || t('sessions.fallbackTitle', { id: s.id })}</span>
-                    <span className="dq-session-cost">¥ {fmt(s.cost)}</span>
+                    <span className="dq-session-cost">¥{fmt(s.cost)}</span>
                   </div>
                   <div className="dq-session-track">
                     <div className="dq-session-fill" style={{ width: `${Math.max((s.cost / (top || 1)) * 100, 1.5)}%` }} />
@@ -759,7 +781,7 @@ function ModelRanking(props: {
                 {modelNameOf(m, t)}
               </span>
               <span className="dq-rank-cost">
-                ¥ {fmt(m.cost)}
+                ¥{fmt(m.cost)}
                 <span className="dq-rank-share">{(share * 100).toFixed(1)}%</span>
               </span>
             </div>
@@ -1350,8 +1372,8 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
         </div>
       )}
 
-      <div className="dq-card dq-card--primary">
-        <div className="dq-card-title">{t('balance.title')}</div>
+      <div className="dq-card dq-card--hero">
+        <CardTitle srOnly>{t('balance.title')}</CardTitle>
         {primary !== null ? (
           <div className="dq-balance-grid">
             <div className="dq-stat">
@@ -1364,6 +1386,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
               >
                 <summary
                   title={t('balance.breakdownTitle')}
+                  aria-label={`${fmt(primary.total)} ${primary.currency}`}
                   onClick={e => {
                     // Own the toggle fully instead of the native default action: a controlled
                     // <details> can be forced open by hover, and a plain native toggle here
@@ -1374,7 +1397,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
                     setRemainingManuallyOpened(v => !v)
                   }}
                 >
-                  {fmt(primary.total)} {primary.currency}
+                  {fmt(primary.total)}<span className="dq-hero-unit">{primary.currency}</span>
                 </summary>
                 <div className="dq-remaining-breakdown">
                   <span>{t('balance.toppedUp', { amount: fmt(primary.toppedUp) })}</span>
@@ -1407,11 +1430,12 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
                 <div className="dq-runway-detail">{runwayTitle}</div>
               </details>
             </div>
-            <Stat label={t('common.status')}>
-              <div className={`dq-stat-value${balance?.isAvailable === false ? ' dq-stat-value--bad' : ' dq-stat-value--ok'}`}>
-                {balance?.isAvailable === false ? t('common.unavailable') : t('common.available')}
-              </div>
-            </Stat>
+            {/* 「可用」是常态，不占 hero 位；只有账户不可用时才出现，且用错误色。 */}
+            {balance?.isAvailable === false && (
+              <Stat label={t('common.status')}>
+                <div className="dq-stat-value dq-stat-value--bad">{t('common.unavailable')}</div>
+              </Stat>
+            )}
           </div>
         ) : loadingBalance ? (
           <BalanceSkeleton />
@@ -1422,7 +1446,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
 
       {props.sessionId !== undefined && props.sessionId !== '' && (
         <div className="dq-card dq-card--primary">
-          <div className="dq-card-title">{t('sessionUsage.title')}</div>
+          <CardTitle caption={t('common.estimated')}>{t('sessionUsage.title')}</CardTitle>
           {sessionUsage !== null ? (
             <SessionUsageCard data={sessionUsage} />
           ) : loadingSessionUsage ? (
@@ -1436,7 +1460,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       )}
 
       <div className="dq-card dq-card--primary">
-        <div className="dq-card-title">{t('overview.title')}</div>
+        <CardTitle caption={t('common.estimated')}>{t('overview.title')}</CardTitle>
         {usage !== null ? (
           <div className="dq-period-grid">
             <Period label={t('overview.today')} period={usage.summary.today} previous={usage.summary.yesterday} compare={t('overview.vsYesterday')} />
@@ -1470,8 +1494,10 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
 
       {usage !== null && activeWindow !== null && activeWindow.vision !== undefined
         && Array.isArray(activeWindow.visionDaily) && Array.isArray(activeWindow.visionSessions) ? (
+        // 窗口内没有图片时整张卡不出现：一行「没有图片输入」不值得一个小节的位置。
+        activeWindow.vision.images === 0 ? null : (
         <div className="dq-card">
-          <div className="dq-card-title">{t('vision.title')}</div>
+          <CardTitle caption={activeWindowName}>{t('vision.title')}</CardTitle>
           <VisionCard
             vision={activeWindow.vision}
             daily={activeWindow.visionDaily}
@@ -1481,9 +1507,10 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
             costTotal={activeWindow.totals.cost}
           />
         </div>
+        )
       ) : usage === null ? (
         <div className="dq-card">
-          <div className="dq-card-title">{t('vision.title')}</div>
+          <CardTitle caption={activeWindowName}>{t('vision.title')}</CardTitle>
           {loadingUsage ? (
             <div className="dq-usage-totals">
               {[64, 88, 72].map((w, i) => (
@@ -1503,7 +1530,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
 
       <div className="dq-card dq-card--primary">
         <div className="dq-card-head">
-          <div className="dq-card-title">{t('usage.trendTitle')}</div>
+          <CardTitle>{t('usage.trendTitle')}</CardTitle>
           {usage !== null && (
             <div className="dq-card-actions">
               <UsageWindowPicker value={windowDays} onChange={changeWindowDays} />
@@ -1557,7 +1584,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
               <>
                 <GroupedBars
                   series={grouped}
-                  height={barMode === 'daily' ? 120 : 100}
+                  height={barMode === 'daily' ? 160 : 140}
                   labelEvery={barMode === 'daily' ? dailyLabelEvery : 3}
                   minWidth={barMode === 'daily' ? dailyMinWidth : undefined}
                 />
@@ -1571,9 +1598,9 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
                 </div>
               </>
             ) : barMode === 'daily' ? (
-              <Bars data={dailyBars} height={120} labelEvery={dailyLabelEvery} minWidth={dailyMinWidth} />
+              <Bars data={dailyBars} height={160} labelEvery={dailyLabelEvery} minWidth={dailyMinWidth} />
             ) : (
-              <Bars data={hourlyBars} height={100} labelEvery={3} />
+              <Bars data={hourlyBars} height={140} labelEvery={3} />
             )}
             <CoverageDiagnostics coverage={usage.coverage} />
           </>
@@ -1585,12 +1612,9 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">{t('heatmap.title')}</div>
+        <CardTitle caption={t('chart.heatmapTitle')}>{t('heatmap.title')}</CardTitle>
         {usage !== null ? (
-          <>
-            <div className="dq-chart-title">{t('chart.heatmapTitle')}</div>
-            <Heatmap data={usage.heatmap} />
-          </>
+          <Heatmap data={usage.heatmap} />
         ) : loadingUsage ? (
           <HeatmapSkeleton />
         ) : (
@@ -1599,7 +1623,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">{t('peak.title')}</div>
+        <CardTitle>{t('peak.title')}</CardTitle>
         {usage !== null ? (
           <PeakCard split={usage.peakSplit} pricing={usage.pricing} />
         ) : loadingUsage ? (
@@ -1613,7 +1637,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">{t('cache.title')}</div>
+        <CardTitle>{t('cache.title')}</CardTitle>
         {usage !== null ? (
           <CacheCard totals={usage.totals} />
         ) : loadingUsage ? (
@@ -1628,7 +1652,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">{t('models.title', { window: activeWindowName })}</div>
+        <CardTitle caption={activeWindowName}>{t('models.title')}</CardTitle>
         {activeWindow !== null ? (
           <ModelRanking models={modelList} totalCost={modelCostTotal} colorOf={colorOf} />
         ) : loadingUsage ? (
@@ -1647,7 +1671,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">{t('sessions.title', { window: activeWindowName })}</div>
+        <CardTitle caption={activeWindowName}>{t('sessions.title')}</CardTitle>
         {activeWindow !== null ? (
           <SessionRanking sessions={activeWindow.sessions} count={activeWindow.sessionCount} totalCost={activeWindow.totals.cost} />
         ) : loadingUsage ? (
@@ -1666,7 +1690,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       </div>
 
       <div className="dq-card">
-        <div className="dq-card-title">{t('settings.title')}</div>
+        <CardTitle>{t('settings.title')}</CardTitle>
         <div className="dq-links-title">{t('links.title')}</div>
         <div className="dq-links">
           <Link href="https://platform.deepseek.com/usage">{t('links.usage')}</Link>

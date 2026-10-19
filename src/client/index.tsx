@@ -31,6 +31,9 @@ export function apply(ctx: ClientContext): void {
   // One stylesheet for the whole plugin; the module loader claims and removes
   // plugin-owned style tags on unload.
   if (typeof document !== 'undefined') {
+    // A hot reload can leave the previous version's tag behind; two sheets would
+    // then mix old and new rules, so drop any stale copy before adding ours.
+    document.querySelectorAll('style[data-plugin="dsh-usage-dashboard"]').forEach(node => node.remove())
     const tag = document.createElement('style')
     tag.dataset.plugin = 'dsh-usage-dashboard'
     tag.textContent = css

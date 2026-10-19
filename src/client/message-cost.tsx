@@ -35,7 +35,7 @@ export function MessageCost({ sessionId, messageId }: MessageCostProps): ReactEl
 
   const turn: TurnUsage | undefined = data?.turns.find(candidate => candidate.messageId === messageId)
   if (turn === undefined) return null
-  const amount = `¥ ${fmtTurnCost(turn.cost)}`
+  const amount = `¥${fmtTurnCost(turn.cost)}`
   const tooltip = t('messageCost.tooltip')
   return (
     <span

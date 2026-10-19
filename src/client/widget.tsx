@@ -379,7 +379,7 @@ export function QuotaWidget(props: {
   const sessionCostRow = sessionUsage === null ? null : (
     <div className="dsh-quota-row" title={t('widget.sessionCostTitle')}>
       <span className="dsh-quota-label">{t('widget.sessionCost')}</span>
-      <span className="dsh-quota-value">¥ {fmtTurnCost(sessionUsage.cost)}</span>
+      <span className="dsh-quota-value">¥{fmtTurnCost(sessionUsage.cost)}</span>
     </div>
   )
 
@@ -405,7 +405,7 @@ export function QuotaWidget(props: {
           {usage.data !== null && (
             <div className="dsh-quota-row" title={t('widget.todayCostTitle', { age: usageAgeText })}>
               <span className="dsh-quota-label">{t('widget.todayCost')}</span>
-              <span className="dsh-quota-value">¥ {fmt(usage.data.summary.today.cost)}</span>
+              <span className="dsh-quota-value">¥{fmt(usage.data.summary.today.cost)}</span>
             </div>
           )}
           {sessionCostRow}

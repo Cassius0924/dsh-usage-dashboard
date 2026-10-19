@@ -7,7 +7,7 @@
 - 常用变量：`--dsw-alias-bg-layer-1/2`、`--dsw-alias-bg-overlay`、`--dsw-alias-border-l1/l2`、
   `--dsw-alias-label-primary/secondary/tertiary`、`--dsw-alias-state-business-primary`（主色/链接）、
   `--dsw-alias-state-success-primary`、`--dsw-alias-state-error-primary`。
-- 卡片：`border-radius:12px`，1px 边框，`padding:16px`；卡片标题 12px / 600 / 次级色。这是全部卡片的基线，
+- 卡片：`border-radius:12px`，1px 边框，`padding:16px`；卡片标题 12px / 600 / 次级色（主卡片 13px/700 / 主文字色；卡内小节标题同为次级色，见下）。这是全部卡片的基线，
   额外的「主卡片」权重是在此基线上的加法修饰，不是另开一套规范。
 - 数字一律 `font-variant-numeric: tabular-nums`，避免刷新时抖动。
 - 类名前缀：悬浮窗 `dsh-quota-*`，仪表盘 `dq-*`。全部样式集中在 `src/client/styles.ts` 一张表里。
@@ -27,7 +27,56 @@
   的字号各自有明确、独立的语义理由，不属于这次合并范围：`.dq-card--primary .dq-card-title` 13px/700
   （轮次 36，主/次卡片权重）、`.dsh-quota-collapsed-total` 15px（轮次 34，悬浮窗折叠总额）、
   `.dq-usage-totals .dq-stat-value` 在 620px 媒体查询内的 13px（轮次 38，防止压力数据换行）、
-  `.dq-remaining`/`.dq-period-cost` 22px（轮次 35，hero 数字）。
+  `.dq-remaining`/`.dq-period-cost` 24px（轮次 35 定为 22px，轮次 54 提到 24px，见下节）。
+
+## 字体与排版基线（轮次 54）
+
+- **字体家族跟随宿主，不在插件里另起一套**：仪表盘与悬浮窗根节点使用
+  `font-family: var(--dsw-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", …)`。
+  宿主 `body` 已定义 `--dsw-font-family`（含用户在「Settings → 排版」里自定义的字体列表），插件以它为第一优先级，
+  回退值抄宿主 `ui-theme/src/styles/base.css` 的默认栈。此前插件写死 `system-ui,...`：本机实测宿主正文用
+  Liberation Sans（Arial 度量）+ Noto Sans CJK SC，插件却因 `system-ui` 优先落到 DejaVu Sans，数字/拉丁字形
+  比宿主粗笨；用户换字体时插件也不会跟随。回退值里不要放 `system-ui`。
+- **字重只用四档 400/500/600/700**：旧表里散落 550/650/680 等合成字重，在只有 400/700 两面的回退字体
+  （DejaVu/Liberation 等）上会被折叠成同一档，语义分级落不了地；统一为 400 正文 / 500 强调（排行名称、
+  设置标签）/ 600 数值与小标题 / 700 卡片主标题与 hero。新增样式时不要再写中间值。
+- **卡内层级：主卡片标题 > 卡片标题/小节标题 > 正文 > 微标签**。普通卡片标题 `.dq-card-title` 维持
+  12/600/次级色（轮次 54 曾试过改主文字色，复核后回退：本机字体只有 Regular/Bold 两面，600 与 700 渲染等价，
+  改色后主/次卡片标题只剩 1px 字号差，反而更糊）；主卡片标题仍是 13/700/主文字色，靠这一档把「账户余额/
+  消耗概览/当前会话消耗/用量趋势」从其余卡片里拎出来。卡内小节标题（`.dq-chart-title`、
+  `.dq-coverage-title`、`.dq-budget-title`、`.dq-links-title`）统一 12/600/次级色——轮次 54 之前这几处有的
+  用主文字色，比卡片标题还重，存在层级倒挂；现在它们与卡片标题同色、靠嵌套位置和留白区分，不再抢权重。
+- **需要被读的小字统一用次级色**：`.dq-stat-label`、`.dq-period-label`、`.dq-rank-share`、`.dq-chart-peak`、
+  `.dq-coverage-metrics dt`、`.dq-remaining-granted`、`.dsh-quota-remaining-label`，以及 11px 的
+  `.dq-bar-label`、`.dq-heat-month`、`.dq-heat-scale`、`.dq-model-tag`、`.dq-pricing-now`；12px 的
+  `.dq-pricing-table th`、`.dq-session-foot`、`.dq-export-menu small`、`.dq-delta--flat/--new`。
+  这些从 `label-tertiary` 提升到 `label-secondary`——三级色在浅色底上只有约 3.7:1，低于 WCAG AA 的 4.5:1，
+  而次级色约 5.8:1。三级色保留给纯装饰/非文本（分隔装饰、chevron、同步点、页脚版本号 `.dq-footer`）以及
+  聊天内联的费用小标 `.dq-message-cost`（与宿主 Chat 操作栏自身的次级元数据同级，属于刻意弱化，不参与正文
+  可读性要求）。
+- **图表刻度 11px、正文 12px、hero 邻接 13px**：柱状图刻度 9px→11px、热力图月份/图例 10px→11px，与微型
+  标签同档（10px 不再承载需要阅读的数字，只留给箭头/图标字符）；导出菜单小字提示 10.5px 归并到 11px
+  （全表不再出现小数像素字号）。计价表数值列（第 3 列起）右对齐 + `tabular-nums` 便于按位比较，行首
+  模型名用 500 权重充当行标题。
+- **行高只有两档：多行说明 1.6、单行元数据 1.5**。计价脚注、高峰/缓存说明、覆盖诊断、空态、告警、崩溃块、
+  popover 明细等 12px 多行文字统一 `line-height:1.6` 并启用 `text-wrap: pretty`；单行/短元数据（`.dq-period-sub`、
+  `.dq-setting-hint`、`.dq-session-sub`、状态行等）统一 1.5，1.45/1.55 两个中间值已清除。悬浮窗是 208–270px 的
+  独立小面板，保留自身更紧凑的 1.45 基准。卡片标题启用 `text-wrap: balance`，避免窄屏下末行只剩一两个字；
+  中文标题的 `letter-spacing: .02em` 保持不变。
+- **根节点统一 `font-variant-numeric: tabular-nums`**：兑现"数字一律 tabular-nums"的约定，覆盖图表刻度、
+  热力图月份、输入框等此前漏掉的数字，刷新时不再轻微抖动。
+- 货币排版：所有界面统一 `¥0.70`（符号紧贴数字，与 tooltip / 计价表 / i18n 测试文案一致）；ISO 币种代码
+  仍与数字之间留空格（`12.86 CNY`），并在 hero 里降字号为 `.dq-hero-unit`。
+- **状态色分"填充"与"文字"两套**（轮次 54）：`--dsw-alias-state-success-primary`（绿 500）与
+  `--dsw-alias-state-warn-primary`（琥珀 500）是给圆点/进度条/色块用的亮色，直接当 11–18px 文字用只有
+  2.28:1 / 2.0:1，在浅色底上几乎读不清。文字改用插件级 `--dq-text-success` / `--dq-text-warn`：以
+  `color-mix(in oklab, 状态色 52%, label-primary 48%)` 按主题混向正文色（浅色主题得到深绿/深琥珀，
+  深色主题得到亮绿/亮琥珀），并保留 `#1a7f37`/`#9a6700` 作为不支持 `color-mix` 时的一档回退。
+  填充/圆点继续用原 token。凡是「状态色文字」新增处，用这两个变量，不要直接写 `--dsw-alias-state-*-primary`。
+- **tooltip 用宿主的 tooltip token**：浮层背景 `var(--dsw-alias-tooltip-bg)`、文字
+  `var(--dsw-static-neutral-bluish-00)`（宿主 `Tooltip.module.css` 同款）。旧代码用的
+  `--dsw-alias-bg-inverse` / `--dsw-alias-label-inverse` 在宿主里并不存在，只是靠回退值在浅色主题下
+  看起来正常，深色主题会失效。
 
 ## 信息层级（仪表盘）
 
@@ -38,10 +87,13 @@
 
 - 数据完整性属于用量图表的审计信息，放在图表底部的轻量 disclosure 中；折叠态就要看见扫描规模与状态，
   展开后再呈现失败 / 跳过明细和本机日志口径，避免再增加一张同权重卡片抢占首屏。
-- 仪表盘「hero 数字」（余额、消耗概览今日 / 本月 / 累计）统一复用 `22px / font-weight:680 / letter-spacing:-.01em`
-  这一档（源头定义在 `.dq-period-cost`，余额数字的 `.dq-remaining` 直接抄同样四个值）；其余 `.dq-stat-value`
-  复用场景（用量分解数字、缓存命中率、预计可用天数、状态文字等）维持 `18px/650` 不变。新增任何"这是本卡片
-  最重要的数字"场景时，优先复用这一档字号字重组合，不要再新开一档只用一次的字号。
+- 仪表盘「hero 数字」（余额、消耗概览今日 / 本月 / 累计）统一复用
+  `24px / font-weight:700 / letter-spacing:-.015em / line-height:1.2` 这一档（源头定义在 `.dq-period-cost`，
+  余额数字的 `.dq-remaining` 直接抄同样四个值；轮次 54 从 22px/680 提升，与 18px/600 的普通数值形成清晰
+  级差，并与悬浮窗 24px 总额同档）。余额 hero 里的 ISO 币种代码降为 `.dq-hero-unit` 13px/500/次级色（与数字间距 4px，和悬浮窗同配方），
+  不再和数字抢同一字号（与悬浮窗「数字 24px + 币种 13px」对齐）。其余 `.dq-stat-value` 复用场景
+  （用量分解数字、缓存命中率、预计可用天数、状态文字等）统一为 `18px/600`。新增任何"这是本卡片最重要的
+  数字"场景时，优先复用这两档组合，不要再新开一档只用一次的字号。
 - 同一张卡片内的一组同类对比指标不重复套浅底圆角小卡；用留白与 1px 分隔线表达比较关系，窄屏把垂直分隔
   转成水平分隔，减少“卡片套卡片”的视觉噪音。
 - 卡片容器建立两档视觉权重（轮次 36，原 9 张卡片，轮次 39 合并官方平台后为 8 张，轮次 40 拆分 DSH 用量卡后
@@ -180,3 +232,30 @@
 - 费用是**估算**，UI 必须让用户看得到「按什么价算的」。
 - 价目表按 model 名匹配，未知模型回退到 pro 价并在说明里标注。
 - 2026-08-17 起 DeepSeek 峰谷定价：按事件本地时间判定时段，生效日之前的事件仍用旧价。
+
+## 页面骨架与字号尺度（轮次 55，取代上文所有字号/卡片条目）
+
+- **密度向宿主看齐**：正文 13px，和 DSH 自身的界面一致。曾试过 14/16/20/40 一套，用户在手机上反馈「字太大、
+  和宿主不协调」，已回退到下面这套。
+- **字号只有五档：12 / 13 / 15 / 18 / 32**。
+  12 = 说明、元数据、统计标签、胶囊、图表刻度、按钮/分段控件；
+  13 = 正文、排行名称和金额、设置标签、卡内小节标题（13/600）；
+  15 = 区块标题 `.dq-card-title`（15/600 主色）；
+  18 = 统计数值、周期金额、悬浮窗总额；
+  32 = 只给余额。
+  10px 只用于 ▸/▾ 字形。不要再加第六档。
+- **标题短，范围和口径放在说明小字里**：`<CardTitle caption=…>`，例如「消耗概览」+「费用为估算」、
+  「模型成本排行」+「近 30 天」。标题文案里不要塞括号或 ` · 范围`。
+- **余额是唯一的 hero**：不带框，32px；预计可用天数放在右侧，手机上也并排。「状态：可用」只在不可用时出现。
+- **只有主卡片带框**：当前会话、消耗概览、用量趋势三张用 1px 浅框、12px 圆角、20px 内边距（窄屏 16px）。
+  其余区块不带框，左右内边距和主卡片内文对齐，靠 32px 段距分组（窄屏 24px）。用间距分组，不用分割线。
+- **当前会话卡**：只有一个模型时，不画模型排行条（它和上面的总数完全重复），改成一行
+  「模型 · 输入 / 输出 / 缓存」。有多个模型时照常显示。
+- **窄屏**：消耗概览的三个周期改成列表行（标签和涨跌在左、金额右对齐、明细在第二行）；缓存三项用 3 列网格。
+- **iOS Safari 必须关掉文字自动放大**：根节点都设 `-webkit-text-size-adjust:100%`。否则 Safari 会把较长的
+  说明文字从 12px 放大到 20px 左右，同一张卡里的字号忽大忽小（轮次 55 用户手机截图里的问题）。
+- **宽度不要按 `100vw` 去估算宿主侧栏**：`.dq-balance` 用 `width:100%` + `box-sizing:border-box`。
+  旧的 `calc(100vw - 56px)` 在手机上比实际可用宽度大，导致右侧金额和按钮被截断。
+- **注入样式前先删掉同名旧标签**（`index.tsx`）。热更新后旧样式表若残留，新旧规则会混在一起生效，
+  例如已经删掉的边框和分割线又出现。
+- 对比度（白底）：主文字 15.8:1，次级 #59636e 6.1:1，成功文字 5.1:1，警告文字 4.9:1，正文全部 ≥ 4.5:1。
