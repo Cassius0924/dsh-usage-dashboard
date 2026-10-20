@@ -13,6 +13,7 @@ export interface ConversationViewsSource {
 export interface ConversationViewSlotEntry {
   options: {
     id?: string
+    order?: number
     label?: string | (() => string)
   }
 }

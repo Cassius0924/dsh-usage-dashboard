@@ -199,3 +199,22 @@
   新旧两代取法并存）；② 「当前会话」的正统信号 = `byId[*].retainedBy.mainView > 0`，宿主的 DocumentTitle、
   侧栏选中（`containsCurrent`）、快捷键用的是同一字段，不要自造推断；③ 宿主升级后的验收必须按「功能面
   清单」逐面看**数据**（行/值在不在），probe 已加悬浮窗断言（存在性 + 会话行文本 + 额度 tab 隐藏/恢复）。
+
+- **这台机器的 DSH Web 默认可能落在 DS Bot 界面，不是经典 Agent 界面；Playwright 验证前必须先切回经典界面**
+  （轮次 56 实测）：profile 装了 `ds-bot` 后，新的浏览器 context 打开 `/?token=…` 会进入 DS Bot 的「团队/机器人」
+  外壳（root class `_7kFT7W_frame`、body `data-bt-motion`、侧栏是 Bot 列表，找不到「新会话 / 插件 / 额度」），
+  此时怎么点都进不了会话 tab。DS Bot 把界面模式存在 `localStorage['ds-bot:surface']`，值为 `agent` 即经典
+  Agent 界面、其它/缺省是 `bot`。验证脚本在 `page.addInitScript` 里写 `localStorage.setItem('ds-bot:surface','agent')`
+  再导航即可复现用户截图里的经典界面；UI 里对应入口是左下角账户菜单 →「切换经典 Agent 模式」。不要为此改
+  profile 或重启服务，也不要假设新建 context 就是经典界面。
+- **slot 列表的 `order` 注册后不可改，运行期重排只能「注销 + 重新注册」，并要自己补回被宿主顺手改掉的选中项**
+  （轮次 56，额度 tab 位置可配置）：`ctx.slots.register` 只返回 disposer，没有 update；dispose 会通知宿主的
+  `conversation.view` 订阅，`refreshViews()` 立刻按持久化偏好重新解析 active view——此刻本插件 tab 不在，宿主会
+  把 active 落到 Chat 并写回偏好。做法：注销后**同步**按新 order 注册，再用从 view 组件 props 捕获的
+  `openView('balance', …)` 在 microtask 里切回；同时用「额度页专用的 html 属性」判断当前是否真在会话里，避免在
+  账号级面板里误触发切 tab。验证要断言的不只是 DOM 顺序，还要断言 active tab、输入框隐藏状态与 localStorage
+  里的持久化值仍然一致。
+- **`grid-template-rows: 0fr → 1fr` 做高度动画时，grid item 的 padding 会撑住 0fr 轨道的 min-content，必须把
+  内边距也一起随 open 状态过渡**（轮次 56，图片用量小节收起）：只给内层 `min-height:0;overflow:hidden` 仍会
+  在收起态留下 `padding-top` 那么多像素（实测 15px），看起来像一条去不掉的分隔缝。把 `padding-top` 从收起态 0
+  过渡到展开态 14px（或用内层再包一层）后收起高度才真正是 0；边界线也不要放在收起态，否则同样留下 1px。

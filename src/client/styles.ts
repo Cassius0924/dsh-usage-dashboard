@@ -52,10 +52,10 @@ export const css = `
    the input box — measured in dashboard.tsx as --dq-composer-w, capped at
    the reading-column width so wide viewports are unchanged. */
 .dq-balance{-webkit-text-size-adjust:100%;text-size-adjust:100%;box-sizing:border-box;width:100%;min-width:0;display:flex;flex-direction:column;gap:32px;padding:20px 24px 48px;max-width:min(860px,var(--dq-composer-w,860px));margin:0 auto;font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif);font-size:13px;line-height:1.5;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary,#1f2328);--dq-text-success:#1a7f37;--dq-text-success:color-mix(in oklab,var(--dsw-alias-state-success-primary,#2da44e) 52%,var(--dsw-alias-label-primary,#1f2328) 48%);--dq-text-warn:#9a6700;--dq-text-warn:color-mix(in oklab,var(--dsw-alias-state-warn-primary,#bf8700) 52%,var(--dsw-alias-label-primary,#1f2328) 48%);}
-@media (max-width:620px){.dq-balance{max-width:100%;gap:24px;padding:16px 12px calc(var(--dq-composer-h,126px) + 16px)}.dq-card,.dq-card--hero,.dq-status-row{padding:0 16px}.dq-card--primary{padding:16px}}
+@media (max-width:620px){.dq-balance{max-width:100%;gap:24px;padding:16px 12px calc(var(--dq-composer-h,126px) + 16px)}.dq-card{padding:16px}.dq-card--hero{padding:0 16px}.dq-status-row{padding:0 16px}}
 /* 轮次 55：只有主卡片带框。次级分析与设置是无框小节，靠 32px 段距和 13px 主色标题分组；
    左右 20px 内边距让它们的文字边与主卡片内文对齐，整页只有一条文字左边线。 */
-.dq-card{box-sizing:border-box;min-width:0;max-width:100%;padding:0 20px}
+.dq-card{box-sizing:border-box;min-width:0;max-width:100%;padding:20px;background:var(--dsw-alias-bg-layer-1,#ffffff);border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.10));border-radius:12px}
 .dq-card-title{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary,#1f2328);margin:0 0 16px;letter-spacing:0;text-wrap:balance}
 .dq-card-caption{font-size:12px;font-weight:400;color:var(--dsw-alias-label-secondary,#59636e)}
 .dq-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
@@ -69,9 +69,10 @@ export const css = `
    打开这个「额度」tab 时上下文最直接相关的数字（这个 tab 挂在具体会话内部，见 DESIGN_NOTES「信息层级」），
    不属于原有账户全局层级 1-3 的任何一级，而是与之正交的另一个维度，但同样是首屏必读，因此同样给
    primary 权重，不新开第三档。 */
-.dq-card--primary{padding:20px;background:var(--dsw-alias-bg-layer-1,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.1));border-radius:12px}
+.dq-card--primary{padding:20px;border-color:var(--dsw-alias-border-l3,rgba(0,0,0,.12))}
 /* 余额是整页唯一的 hero：不套框，32px 数字独占一档，让它在遮住文字时仍是第一眼。 */
-.dq-card--hero{padding:0 20px}
+.dq-card--hero{padding:0 20px;background:transparent;border:0;border-radius:0}
+.dq-card-pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:24px;min-width:0}
 .dq-card--hero .dq-stat-label{font-size:13px;margin-bottom:2px}
 .dq-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .dq-card--hero .dq-balance-grid{align-items:stretch;gap:12px 48px}
@@ -79,6 +80,7 @@ export const css = `
 /* hero 数字不画点状下划线（40px 下太重）；可点性靠悬停底色和 title 提示。 */
 .dq-card--hero details>summary{text-decoration:none;margin:-2px -6px;padding:2px 6px;border-radius:8px;transition:background .15s ease}
 .dq-card--hero details>summary:hover,.dq-card--hero details[open]>summary{background:var(--dsw-alias-bg-layer-2,rgba(0,0,0,.05))}
+@media (max-width:620px){.dq-card{padding:16px}.dq-card--hero{padding:0 16px}}
 .dq-window-switch{display:inline-flex;align-items:center;gap:2px;padding:2px;border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.08))}
 .dq-window-btn{border:0;border-radius:6px;padding:4px 8px;background:transparent;color:var(--dsw-alias-label-secondary,#59636e);font-size:12px;white-space:nowrap;cursor:pointer;transition:background .15s ease,color .15s ease,box-shadow .15s ease}
 .dq-window-btn:hover{color:var(--dsw-alias-label-primary,#1f2328)}
@@ -223,7 +225,6 @@ export const css = `
 .dq-peak-figures{display:flex;flex-wrap:wrap;gap:12px 32px;margin-top:16px}
 .dq-peak-delta{font-size:12px;font-weight:500;margin-left:8px;color:var(--dq-text-warn)}
 .dq-peak-delta--save{color:var(--dq-text-success)}
-.dq-peak-foot{margin:12px 0 0;font-size:12px;line-height:1.6;color:var(--dsw-alias-label-secondary,#59636e);text-wrap:pretty}
 .dq-cache-figures{display:flex;flex-wrap:wrap;gap:12px 32px;margin-bottom:12px}
 @media (max-width:620px){.dq-cache-figures{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 16px}.dq-cache-figures .dq-stat{min-width:0}}
 .dq-muted-value{color:var(--dsw-alias-label-secondary,#59636e)!important;font-weight:500}
@@ -428,6 +429,77 @@ export const css = `
 .dq-refresh-icon{display:inline-block;line-height:1}
 .dq-refresh-icon--spin{animation:dq-spin .9s linear infinite}
 @keyframes dq-spin{to{transform:rotate(360deg)}}
+/* ============================================================================
+   Host chrome: the 「额度」conversation view does not use the chat composer.
+   The attribute is set by index.tsx only when the dashboard is mounted inside
+   the conversation scrollport, so the account-wide panel never hides it.
+   '!important' because the composer's slot anchor is a "display:contents"
+   wrapper whose display we must beat regardless of host rule order.
+   ============================================================================ */
+html[data-dq-quota-view] [data-slot="conversation.composer"]{display:none!important}
+/* The narrow-viewport rule pads for the fixed composer; with it hidden there
+   is nothing to clear, so fall back to the page's own bottom breathing room. */
+html[data-dq-quota-view] .dq-balance{padding-bottom:48px}
+/* ============================================================================
+   Account-wide 「额度」panel (the optional sidebar entry opens this main
+   keyed panel). The dashboard keeps its own width/padding; the panel only
+   supplies the page title row and the scrolling box the main column lacks.
+   ============================================================================ */
+/* Account-wide page frame: mirrors DSH's first-level pages (Plugins /
+   Scheduled tasks) — full-height scroll box, 28px top inset on the heading,
+   a 960px centred column, clamp(24px,4vw,48px) inline + 48px bottom insets and
+   a 20px/28px/500 page title, so the three sibling entries line up. */
+.dq-panel{box-sizing:border-box;height:100%;min-height:0;overflow-y:auto;overflow-x:hidden;padding:0 clamp(24px,4vw,48px) 48px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1f2328);font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif);font-size:13px;line-height:1.5}
+.dq-panel-head{box-sizing:border-box;display:flex;flex-direction:column;align-items:flex-start;gap:4px;width:100%;max-width:960px;margin:0 auto 32px;padding-top:28px}
+.dq-panel-title{margin:0;font-size:20px;font-weight:500;line-height:28px;color:var(--dsw-alias-label-primary,#1f2328)}
+.dq-panel-caption{font-size:13px;line-height:20px;color:var(--dsw-alias-label-secondary,#59636e)}
+.dq-panel .dq-balance{box-sizing:border-box;width:100%;max-width:960px;padding:0}
+/* macOS hiddenInset titlebar: the frame's top clearance keeps the heading
+   below the window's top strip, matching the host's sibling pages. */
+[data-platform="darwin"] .dq-panel-head{padding-top:calc(28px + var(--dsh-frame-top-clearance,0px))}
+@media (max-width:620px){
+  .dq-panel-head{padding-top:24px;margin-bottom:24px}
+  .dq-panel .dq-balance{max-width:100%;padding:0}
+}
+/* Optional sidebar entry. Top placement joins the host's global-panel icon
+   row (only the glyph is ours); bottom placement renders a row beside
+   Settings, collapsing to a square rail button with the sidebar. */
+/* The glyph is an SVG matching the host's 16px stroke icons; color inherits
+   from the sidebar row so selected/hover states stay the host's business. */
+.dq-side-icon{flex:none;display:block}
+.dq-side-entry{display:flex;align-items:center;gap:8px;box-sizing:border-box;width:100%;border:0;border-radius:8px;padding:7px 8px;background:transparent;color:var(--dsw-alias-label-secondary,#59636e);font:inherit;font-size:13px;line-height:1.3;text-align:left;cursor:pointer}
+.dq-side-entry:hover{background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.10));color:var(--dsw-alias-label-primary,#1f2328)}
+.dq-side-entry:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:1px}
+.dq-side-entry[aria-pressed="true"]{color:var(--dsw-alias-label-primary,#1f2328)}
+.dq-side-entry--rail{justify-content:center;width:32px;height:32px;margin:0 auto;padding:0}
+.dq-side-entry-icon{flex:none;display:inline-flex;align-items:center;justify-content:center}
+.dq-side-entry-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ============================================================================
+   Settings controls for the two layout preferences: a compact select and the
+   draggable tab-order strip.
+   ============================================================================ */
+.dq-select{font:inherit;font-size:13px;line-height:1.3;color:var(--dsw-alias-label-primary,#1f2328);background:var(--dsw-alias-bg-layer-1,#fff);border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.16));border-radius:8px;padding:5px 8px;min-width:96px;cursor:pointer}
+.dq-select:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:1px}
+.dq-tab-order{display:flex;flex-wrap:wrap;align-items:center;gap:6px;box-sizing:border-box;max-width:100%;min-height:32px;padding:4px;border:1px dashed var(--dsw-alias-border-l2,rgba(0,0,0,.16));border-radius:8px;background:var(--dsw-alias-bg-layer-2,rgba(120,130,150,.06))}
+.dq-tab-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08));border-radius:999px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-secondary,#59636e);font-size:12px;line-height:1.4;white-space:nowrap}
+.dq-tab-chip--current{cursor:grab;color:var(--dsw-alias-label-primary,#1f2328);border-color:var(--dsw-alias-state-business-primary,#0969da);font-weight:600;user-select:none;-webkit-user-select:none;touch-action:none}
+.dq-tab-chip--current:active{cursor:grabbing}
+.dq-tab-chip--current:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:1px}
+.dq-tab-chip--dragging{opacity:.55}
+.dq-tab-chip--drop-target{border-style:dashed;border-color:var(--dsw-alias-state-business-primary,#0969da)}
+/* ============================================================================
+   「图片 / 多模态用量」lives inside the usage-trend card. The grid-rows 0fr→1fr
+   trick animates the section's real height as a window range makes it appear
+   or disappear; opacity/translate make the change read as a reveal rather
+   than a reflow. The body keeps 14px of top room in both states (clipped by
+   the 0fr row when closed) so opening never jumps.
+   ============================================================================ */
+.dq-vision-inline{display:grid;grid-template-rows:0fr;margin-top:0;opacity:0;transform:translateY(-3px);overflow:hidden;transition:grid-template-rows .32s cubic-bezier(.22,1,.36,1),margin-top .32s cubic-bezier(.22,1,.36,1),opacity .2s ease,transform .32s cubic-bezier(.22,1,.36,1)}
+.dq-vision-inline[data-open="true"]{grid-template-rows:1fr;margin-top:24px;opacity:1;transform:none}
+.dq-vision-inline-body{min-height:0;overflow:hidden}
+.dq-vision-inline-body>.dq-chart-title{margin-top:0}
+.dq-vision-inline-body>.dq-chart-title{margin-top:0}
+
 @media (prefers-reduced-motion:reduce){
   .dsh-quota-root,.dsh-quota-root *,
   .dsh-quota-root *::before,.dsh-quota-root *::after,

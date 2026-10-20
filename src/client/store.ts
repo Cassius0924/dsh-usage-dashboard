@@ -13,7 +13,7 @@ export interface Store<T> {
   subscribe(fn: () => void): () => void
 }
 
-function createStore<T>(key: string, isValid: (value: unknown) => boolean, fallback: T): Store<T> {
+export function createStore<T>(key: string, isValid: (value: unknown) => boolean, fallback: T): Store<T> {
   let current = loadPref<T>(key, isValid, fallback)
   const listeners = new Set<() => void>()
   return {

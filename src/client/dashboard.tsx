@@ -5,7 +5,7 @@
  * refresh then updates it without blocking; a full-screen 加载中 only
  * appears when nothing has ever been cached.
  */
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { USAGE_WINDOW_DAYS } from '../contract.ts'
 import { fetchBalance, fetchSessionUsage, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
@@ -14,6 +14,7 @@ import { getComposerElement, getComposerInputElement, getShellFrame } from './do
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
 import { fallbackT, localizeApiError, useI18n, type Translate } from './i18n.tsx'
+import { quotaTabIndexStore, sidebarEntryStore, type SidebarEntryPlacement } from './layout-prefs.ts'
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, SessionUsageData, UsageCoverage, UsageData, UsageWindowDays, VisionDayPoint, VisionSession, VisionStats } from '../contract.ts'
 import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetTabIdsStore, widgetVisibleStore } from './store.ts'
@@ -239,7 +240,6 @@ function PricingNote(props: { pricing: PricingInfo }): ReactElement {
           {t('pricing.unit', { currency: pricing.currency })}
           {t('pricing.splitNote', { windows: pricing.peakWindows.join(t('common.listSeparator')) })}
           {t('pricing.visionNote')}
-          {t('pricing.modelNote')}
           {t('pricing.unknown')}
         </p>
       </div>
@@ -526,13 +526,20 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
         <span><span className="dq-legend-swatch dq-legend-swatch--hit" />{t('cache.hitLegend', { tokens: fmtCompact(totals.cache, locale) })}</span>
         <span><span className="dq-legend-swatch dq-legend-swatch--miss" />{t('cache.missLegend', { tokens: fmtCompact(totals.input, locale) })}</span>
       </div>
-      <p className="dq-cache-foot">
-        {low
-          ? t('cache.lowHint')
-          : t('cache.goodHint')}
-      </p>
     </div>
   )
+}
+
+/** Everything `VisionCard` needs to paint one window's image usage. Captured
+ *  as a snapshot by the trend card so the closing animation can keep showing
+ *  the last payload after the live window stops reporting images. */
+interface VisionSectionProps {
+  vision: VisionStats
+  daily: VisionDayPoint[]
+  sessions: VisionSession[]
+  windowLabel: string
+  inputTokens: number
+  costTotal: number
 }
 
 /**
@@ -544,14 +551,7 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
  * and priced at the consuming call's rates; shares are against the window's
  * reported input tokens and cost.
  */
-function VisionCard(props: {
-  vision: VisionStats
-  daily: VisionDayPoint[]
-  sessions: VisionSession[]
-  windowLabel: string
-  inputTokens: number
-  costTotal: number
-}): ReactElement {
+function VisionCard(props: VisionSectionProps): ReactElement {
   const { t, locale } = useI18n()
   const { vision, daily, sessions, windowLabel, inputTokens, costTotal } = props
   if (vision.images === 0) return <div className="dq-empty">{t('vision.empty', { window: windowLabel })}</div>
@@ -639,10 +639,6 @@ function PeakCard(props: { split: PeakSplit; pricing: PricingInfo }): ReactEleme
           </div>
         </div>
       </div>
-      <p className="dq-peak-foot">
-        {t('peak.schedule', { windows: pricing.peakWindows.join(t('common.listSeparator')) })}
-        {t('peak.activeHint')}
-      </p>
     </div>
   )
 }
@@ -973,6 +969,20 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
   const [selectedModels, setSelectedModels] = useState<string[]>([])
   const [windowDays, setWindowDays] = useState<UsageWindowDays>(usageWindowStore.get())
   const [chartMetric, setChartMetric] = useState<ChartMetric>(chartMetricStore.get())
+  // Layout preferences shared with the client registration half (see
+  // ./layout-prefs.ts): the sidebar entry is applied there, and the 「额度」tab
+  // position is mapped onto the host's slot order there. Seed locally and stay
+  // subscribed so the row shows whatever actually got applied.
+  const [sidebarEntry, setSidebarEntry] = useState<SidebarEntryPlacement>(sidebarEntryStore.get())
+  useEffect(() => sidebarEntryStore.subscribe(() => setSidebarEntry(sidebarEntryStore.get())), [])
+  // Chip drag state for the tab-position setting. `tabDropTarget` is the chip
+  // currently under the pointer while dragging, only to paint the drop target.
+  const [tabDragging, setTabDragging] = useState(false)
+  const [tabDropTarget, setTabDropTarget] = useState<number | null>(null)
+  // The inline image-usage section animates closed when the selected window
+  // loses its images; the last payload that had images stays rendered for the
+  // ~320ms collapse, so the section always has something to show while shrinking.
+  const [retainedVision, setRetainedVision] = useState<VisionSectionProps | null>(null)
   // "预计可用" hover preview: an unopened <details> skips rendering its
   // non-summary children in Chromium (a content-visibility-like platform
   // behavior), so CSS-only `:hover{display:block}` never paints anything
@@ -1216,6 +1226,100 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
     chartMetricStore.set(value)
   }
 
+  const changeSidebarEntry = (value: SidebarEntryPlacement): void => {
+    setSidebarEntry(value)
+    sidebarEntryStore.set(value)
+  }
+
+  // 「额度」tab position: read from the live roster (never from local state) so
+  // the chips show the order the host actually applied, including orders other
+  // plugins picked.
+  const balanceTabIndex = viewTabs.findIndex(tab => tab.id === 'balance')
+
+  /** Final roster position for dropping the quota chip on `target`, before or
+   *  after that chip's midpoint. The dragged chip leaves the roster before it
+   *  is reinserted, so a rightward drop lands one slot earlier than the raw
+   *  target — `quotaTabIndexStore` stores the final position, not an insertion
+   *  gap, so the shift has to be undone here. */
+  const finalTabIndex = (target: number, after: boolean): number => {
+    const gap = after ? target + 1 : target
+    const dropped = balanceTabIndex >= 0 && gap > balanceTabIndex ? gap - 1 : gap
+    return Math.max(0, Math.min(dropped, Math.max(viewTabs.length - 1, 0)))
+  }
+
+  const endTabDrag = (): void => {
+    setTabDragging(false)
+    setTabDropTarget(null)
+  }
+
+  const previewTabDropTarget = (index: number): void => {
+    setTabDropTarget(prev => (prev === index ? prev : index))
+  }
+
+  const applyQuotaTabIndex = (index: number): void => {
+    const next = Math.max(0, Math.min(index, Math.max(viewTabs.length - 1, 0)))
+    if (next === balanceTabIndex) return
+    quotaTabIndexStore.set(next)
+    // Applying the new slot order replaces our registration, which remounts
+    // this dashboard: the chip loses DOM focus. Put it back after the remount
+    // so holding ArrowLeft/ArrowRight can nudge the tab more than once.
+    window.setTimeout(() => {
+      const chip = document.querySelector<HTMLElement>('.dq-tab-chip--current')
+      chip?.focus()
+    }, 80)
+  }
+
+  const dropQuotaTab = (target: number, after: boolean): void => {
+    applyQuotaTabIndex(finalTabIndex(target, after))
+    endTabDrag()
+  }
+
+  const onQuotaTabDragStart = (event: ReactDragEvent<HTMLElement>): void => {
+    setTabDragging(true)
+    // Firefox refuses to start a drag unless some payload is attached.
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', 'balance')
+  }
+
+  const onChipDragOver = (event: ReactDragEvent<HTMLElement>, index: number): void => {
+    // Only the quota chip's own drag reorders tabs; dragging a file, link or
+    // selected text over the strip must not be accepted as a drop target.
+    if (!tabDragging) return
+    event.preventDefault()
+    event.stopPropagation()
+    previewTabDropTarget(index)
+  }
+
+  const onChipDrop = (event: ReactDragEvent<HTMLElement>, index: number): void => {
+    if (!tabDragging) return
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    dropQuotaTab(index, event.clientX > rect.left + rect.width / 2)
+  }
+
+  const onOrderDragOver = (event: ReactDragEvent<HTMLDivElement>): void => {
+    // The container itself (the chip-free tail) means "move to the end"; chips
+    // stop propagation and compute a precise before/after slot.
+    if (!tabDragging) return
+    event.preventDefault()
+    if (event.target === event.currentTarget) previewTabDropTarget(viewTabs.length - 1)
+  }
+
+  const onOrderDrop = (event: ReactDragEvent<HTMLDivElement>): void => {
+    if (!tabDragging) return
+    event.preventDefault()
+    if (event.target !== event.currentTarget) return
+    applyQuotaTabIndex(viewTabs.length - 1)
+    endTabDrag()
+  }
+
+  const onQuotaTabKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    applyQuotaTabIndex(balanceTabIndex + (event.key === 'ArrowLeft' ? -1 : 1))
+  }
+
   const primary = balance !== null && balance.balances.length > 0 ? balance.balances[0] : null
 
   // Runway: balance divided by the last 7 calendar days' average spend. Idle
@@ -1237,6 +1341,40 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
 
   const activeWindow = usage?.windows.find(window => window.days === windowDays) ?? null
   const activeWindowName = windowName(windowDays, t)
+
+  // Image / multimodal usage lives inside the 用量趋势 card now, as a section
+  // that opens and closes with the selected window: 0 images means no section
+  // at all (a line saying "no images" is not worth the space). A host half
+  // that has not been restarted yet sends a pre-vision payload, so the shape is
+  // re-checked here rather than trusted from the types.
+  const visionStats = activeWindow?.vision
+  const visionOpen = usage !== null && activeWindow !== null && visionStats !== undefined
+    && visionStats.images > 0
+    && Array.isArray(activeWindow.visionDaily) && Array.isArray(activeWindow.visionSessions)
+  const visionPayload = (window: NonNullable<typeof activeWindow>, stats: VisionStats, label: string): VisionSectionProps => ({
+    vision: stats,
+    daily: window.visionDaily,
+    sessions: window.visionSessions,
+    windowLabel: label,
+    inputTokens: window.totals.input,
+    costTotal: window.totals.cost,
+  })
+  const liveVision: VisionSectionProps | null = visionOpen && activeWindow !== null && visionStats !== undefined
+    ? visionPayload(activeWindow, visionStats, activeWindowName)
+    : null
+  // Open: paint the live payload immediately. Closed: keep the last payload for
+  // 320ms (matching the CSS grid-row collapse) and drop it afterwards. The
+  // timer is cleared on every dependency change and on unmount.
+  useEffect(() => {
+    if (visionOpen && activeWindow !== null && visionStats !== undefined) {
+      setRetainedVision(visionPayload(activeWindow, visionStats, activeWindowName))
+      return
+    }
+    const timer = window.setTimeout(() => setRetainedVision(null), 320)
+    return () => window.clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visionOpen, activeWindow, activeWindowName])
+  const shownVision = visionOpen ? liveVision : retainedVision
 
   const dailyBars = (activeWindow?.daily ?? []).map(d => ({
     label: windowDays === 365 ? d.date.slice(5).replace('-', '/') : d.date.slice(8, 10),
@@ -1492,42 +1630,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
         {usage !== null && <PricingNote pricing={usage.pricing} />}
       </div>
 
-      {usage !== null && activeWindow !== null && activeWindow.vision !== undefined
-        && Array.isArray(activeWindow.visionDaily) && Array.isArray(activeWindow.visionSessions) ? (
-        // 窗口内没有图片时整张卡不出现：一行「没有图片输入」不值得一个小节的位置。
-        activeWindow.vision.images === 0 ? null : (
-        <div className="dq-card">
-          <CardTitle caption={activeWindowName}>{t('vision.title')}</CardTitle>
-          <VisionCard
-            vision={activeWindow.vision}
-            daily={activeWindow.visionDaily}
-            sessions={activeWindow.visionSessions}
-            windowLabel={activeWindowName}
-            inputTokens={activeWindow.totals.input}
-            costTotal={activeWindow.totals.cost}
-          />
-        </div>
-        )
-      ) : usage === null ? (
-        <div className="dq-card">
-          <CardTitle caption={activeWindowName}>{t('vision.title')}</CardTitle>
-          {loadingUsage ? (
-            <div className="dq-usage-totals">
-              {[64, 88, 72].map((w, i) => (
-                <div key={i} className="dq-stat"><Skel w={w} h={11} /><Skel w={72} h={20} /></div>
-              ))}
-            </div>
-          ) : (
-            <div className="dq-empty">{t('vision.empty', { window: activeWindowName })}</div>
-          )}
-        </div>
-      ) : (
-        // Host serving a pre-vision payload (e.g. not restarted yet): hide the
-        // whole card instead of leaving a titled shell — it reappears as soon
-        // as the host half serves the new shape.
-        null
-      )}
-
       <div className="dq-card dq-card--primary">
         <div className="dq-card-head">
           <CardTitle>{t('usage.trendTitle')}</CardTitle>
@@ -1602,13 +1704,33 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
             ) : (
               <Bars data={hourlyBars} height={140} labelEvery={3} />
             )}
-            <CoverageDiagnostics coverage={usage.coverage} />
           </>
         ) : loadingUsage ? (
           <UsageSkeleton />
         ) : (
           <div className="dq-empty">{t('chart.empty')}</div>
         )}
+        {/* 图片用量并入本卡：窗口切到没有图片的范围时整段收起。关闭期间仍渲染
+            最后一份有图数据，让 0fr→1fr 的收起动画有内容可动；加载中也保留关闭态
+            的空壳，数据到达时才是真的「展开」而不是直接出现。 */}
+        <div className="dq-vision-inline" data-open={visionOpen ? 'true' : 'false'} aria-hidden={!visionOpen}>
+          <div className="dq-vision-inline-body">
+            {shownVision !== null && (
+              <>
+                <div className="dq-chart-title">{t('vision.title')}<span className="dq-chart-peak">{shownVision.windowLabel}</span></div>
+                <VisionCard
+                  vision={shownVision.vision}
+                  daily={shownVision.daily}
+                  sessions={shownVision.sessions}
+                  windowLabel={shownVision.windowLabel}
+                  inputTokens={shownVision.inputTokens}
+                  costTotal={shownVision.costTotal}
+                />
+              </>
+            )}
+          </div>
+        </div>
+        {usage !== null && <CoverageDiagnostics coverage={usage.coverage} />}
       </div>
 
       <div className="dq-card">
@@ -1619,35 +1741,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
           <HeatmapSkeleton />
         ) : (
           <div className="dq-empty">{t('chart.empty')}</div>
-        )}
-      </div>
-
-      <div className="dq-card">
-        <CardTitle>{t('peak.title')}</CardTitle>
-        {usage !== null ? (
-          <PeakCard split={usage.peakSplit} pricing={usage.pricing} />
-        ) : loadingUsage ? (
-          <>
-            <div className="dq-peak-track" />
-            <div className="dq-peak-figures"><Skel w={120} h={11} /><Skel w={96} h={20} /></div>
-          </>
-        ) : (
-          <div className="dq-empty">{t('peak.empty')}</div>
-        )}
-      </div>
-
-      <div className="dq-card">
-        <CardTitle>{t('cache.title')}</CardTitle>
-        {usage !== null ? (
-          <CacheCard totals={usage.totals} />
-        ) : loadingUsage ? (
-          <div className="dq-cache-figures">
-            {[60, 96, 72].map((w, i) => (
-              <div key={i} className="dq-stat"><Skel w={w} h={11} /><Skel w={72} h={20} /></div>
-            ))}
-          </div>
-        ) : (
-          <div className="dq-empty">{t('cache.empty')}</div>
         )}
       </div>
 
@@ -1687,6 +1780,39 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
         ) : (
           <div className="dq-empty">{t('sessions.empty')}</div>
         )}
+      </div>
+
+      {/* The two half-width analysis cards sit side by side while there is
+          room; below the pair's own 340px column floor they stack. */}
+      <div className="dq-card-pair">
+        <div className="dq-card">
+          <CardTitle>{t('peak.title')}</CardTitle>
+          {usage !== null ? (
+            <PeakCard split={usage.peakSplit} pricing={usage.pricing} />
+          ) : loadingUsage ? (
+            <>
+              <div className="dq-peak-track" />
+              <div className="dq-peak-figures"><Skel w={120} h={11} /><Skel w={96} h={20} /></div>
+            </>
+          ) : (
+            <div className="dq-empty">{t('peak.empty')}</div>
+          )}
+        </div>
+
+        <div className="dq-card">
+          <CardTitle>{t('cache.title')}</CardTitle>
+          {usage !== null ? (
+            <CacheCard totals={usage.totals} />
+          ) : loadingUsage ? (
+            <div className="dq-cache-figures">
+              {[60, 96, 72].map((w, i) => (
+                <div key={i} className="dq-stat"><Skel w={w} h={11} /><Skel w={72} h={20} /></div>
+              ))}
+            </div>
+          ) : (
+            <div className="dq-empty">{t('cache.empty')}</div>
+          )}
+        </div>
       </div>
 
       <div className="dq-card">
@@ -1760,6 +1886,58 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
                 ? t('settings.monthlyBudgetOn', { amount: fmt(monthlyBudget) })
                 : t('settings.monthlyBudgetOff')}
             </span>
+          </div>
+        </div>
+        <div className="dq-setting">
+          <label className="dq-setting-label" htmlFor="dq-sidebar-entry">{t('settings.sidebarEntry')}</label>
+          <div className="dq-setting-control">
+            <select
+              id="dq-sidebar-entry"
+              className="dq-select"
+              value={sidebarEntry}
+              onChange={e => changeSidebarEntry(e.target.value as SidebarEntryPlacement)}
+            >
+              <option value="off">{t('settings.sidebarEntryOff')}</option>
+              <option value="top">{t('settings.sidebarEntryTop')}</option>
+              <option value="bottom">{t('settings.sidebarEntryBottom')}</option>
+            </select>
+            <span className="dq-setting-hint">{t('settings.sidebarEntryHint')}</span>
+          </div>
+        </div>
+        <div className="dq-setting">
+          <div className="dq-setting-label" id="dq-tab-order-label">{t('settings.tabPosition')}</div>
+          <div className="dq-setting-control">
+            <div
+              className="dq-tab-order"
+              role="group"
+              aria-labelledby="dq-tab-order-label"
+              aria-describedby="dq-tab-order-hint"
+              onDragOver={onOrderDragOver}
+              onDrop={onOrderDrop}
+            >
+              {viewTabs.map((tab, index) => {
+                const current = tab.id === 'balance'
+                const dropTarget = tabDragging && !current && tabDropTarget === index
+                return (
+                  <span
+                    key={tab.id}
+                    className={`dq-tab-chip${current ? ' dq-tab-chip--current' : ''}${current && tabDragging ? ' dq-tab-chip--dragging' : ''}${dropTarget ? ' dq-tab-chip--drop-target' : ''}`}
+                    draggable={current}
+                    tabIndex={current ? 0 : undefined}
+                    role={current ? 'button' : undefined}
+                    aria-label={current ? t('settings.tabDragAria') : undefined}
+                    onDragStart={current ? onQuotaTabDragStart : undefined}
+                    onDragEnd={current ? endTabDrag : undefined}
+                    onDragOver={event => onChipDragOver(event, index)}
+                    onDrop={event => onChipDrop(event, index)}
+                    onKeyDown={current ? onQuotaTabKeyDown : undefined}
+                  >
+                    {tab.label}
+                  </span>
+                )
+              })}
+            </div>
+            <span id="dq-tab-order-hint" className="dq-setting-hint">{t('settings.tabPositionHint')}</span>
           </div>
         </div>
       </div>
