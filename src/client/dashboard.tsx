@@ -13,7 +13,7 @@ import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } fro
 import { getComposerElement, getComposerInputElement, getShellFrame } from './dom.ts'
 import { dailyUsageCsv, downloadText, exportDateStamp, fullUsageJson, modelUsageCsv } from './export.ts'
 import { syncStatusText, type SyncState } from './freshness.ts'
-import { fallbackT, localizeApiError, useI18n, type Translate } from './i18n.tsx'
+import { fallbackT, intlLocale, localizeApiError, useI18n, type Translate } from './i18n.tsx'
 import { quotaTabIndexStore, sidebarEntryStore, type SidebarEntryPlacement } from './layout-prefs.ts'
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, SessionUsageData, UsageCoverage, UsageData, UsageWindowDays, VisionDayPoint, VisionSession, VisionStats } from '../contract.ts'
@@ -254,7 +254,7 @@ function CoverageDiagnostics(props: { coverage: UsageCoverage }): ReactElement {
   const hasGaps = coverage.failedSessions > 0
     || coverage.skippedRecords > 0
     || coverage.scannedSessions < coverage.listedSessions
-  const coverageTime = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
+  const coverageTime = new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
   })
@@ -417,7 +417,7 @@ function SessionUsageCard(props: { data: SessionUsageData }): ReactElement {
   const { data } = props
   if (data.calls === 0) return <div className="dq-empty">{t('sessionUsage.empty')}</div>
 
-  const rangeTime = new Intl.DateTimeFormat(locale === 'en' ? 'en-US' : 'zh-CN', {
+  const rangeTime = new Intl.DateTimeFormat(intlLocale(locale), {
     timeZone: 'Asia/Shanghai', year: 'numeric', month: 'numeric', day: 'numeric',
     hour: '2-digit', minute: '2-digit', hour12: false,
   })
@@ -1478,7 +1478,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
             aria-live="polite"
             title={usageUpdatedAt === null
               ? t('status.neverSynced')
-              : t('status.usageTime', { time: new Date(usageUpdatedAt).toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN', { timeZone: 'Asia/Shanghai' }) })}
+              : t('status.usageTime', { time: new Date(usageUpdatedAt).toLocaleString(intlLocale(locale), { timeZone: 'Asia/Shanghai' }) })}
           >
             <span className="dq-sync-dot" aria-hidden="true" />
             {syncStatusText(syncState, usageUpdatedAt, freshnessNow, t)}

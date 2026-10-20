@@ -218,3 +218,19 @@
   内边距也一起随 open 状态过渡**（轮次 56，图片用量小节收起）：只给内层 `min-height:0;overflow:hidden` 仍会
   在收起态留下 `padding-top` 那么多像素（实测 15px），看起来像一条去不掉的分隔缝。把 `padding-top` 从收起态 0
   过渡到展开态 14px（或用内层再包一层）后收起高度才真正是 0；边界线也不要放在收起态，否则同样留下 1px。
+
+- **不要在插件里扩宿主的语言目录：DSH 内置只有 `zh`/`en`，自造第三语言会让宿主 UI 和插件 UI 语言不一致**
+  （轮次 57，先做再回退）：第三方语言只能用 `ctx.locale.addLanguage({ id, label, fallback })` + 单 locale
+  字典注册（`ctx.locale.register(ns, locale, dict)` 单独调用选不到）。技术上可行，但宿主其他包没有对应字典，
+  用户选中后宿主界面按 fallback 回落简中、只有本插件是另一种语言——产品上不可接受。用户明确要求对齐 DSH
+  内置语言后，繁中 language pack 整体移除。结论：语言集合以宿主为准，插件只提供宿主已有语言的词典，
+  语言选择继续只走宿主 Settings。
+- **locale 身份（字典/偏好/`<html lang>`）和 `Intl` tag 是两套词表，组件里不要现写
+  `locale === 'en' ? 'en-US' : 'zh-CN'`**（轮次 57）：这类三元表达式散落各处，语言集合一变就得逐处改，
+  且容易静默用错区域。集中成 `intlLocale()` 映射表（zh→zh-CN、en→en-US），组件只传 `LocaleId`；
+  `useI18n` 从字典自带的 `meta.locale` 取实际 locale，绕开「slot 组件只拿得到 `t`、拿不到宿主 locale
+  快照」的限制。这次回退繁中后，这个映射保留了下来，是这轮 i18n 唯一的产品化收益。
+- **主 checkout 正被另一个 session 改的时候，新开 git worktree 是唯一干净的隔离方式**（轮次 57）：
+  当时主 checkout 有未提交改动（甚至 `src/client/locales.ts` 正在被加 key），直接开工会互相污染，也没法安全
+  build（会覆盖共享的 `lib/`）。从 master 起 worktree 后完全隔离；代价是工作树在 session workspace 之外，
+  子代理的写范围只能用绝对路径在任务描述里约束（write_scopes 无法登记 workspace 外路径）。

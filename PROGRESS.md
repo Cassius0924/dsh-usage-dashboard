@@ -95,6 +95,25 @@
 
 ## 已完成（续）
 
+- （轮次 57）`feat(i18n)`: i18n 对齐 DSH 内置语言（简中 / English），补 Intl 区域映射。用户先要求「支持一下
+  i18n，目前只搞简体中文、繁体中文、英文。new 一个 worktree 开发」，实测后改为「繁体中文是 dsh 本来就不支持
+  的，那我们也不同额外支持，对齐 dsh 的设置就行」。按用户要求在独立 worktree
+  （`/data/root/cassdev/dsh-usage-dashboard-i18n`，分支 `feat/i18n-zh-hant`）开发，主 checkout 当时另有 session
+  的未提交改动，完全隔离。
+  - 曾完整实现繁中 `zh-Hant`（`ctx.locale.addLanguage` + 单 locale 字典、266 键台湾用语、三语测试、独立 3099
+    实例 39/39 GUI 验证）并合并部署到 3080；但实测确认宿主其他包没有繁中字典、宿主 UI 只能回落简中，形成
+    「宿主简中 + 插件繁中」的语言混搭，产品判断不可接受 → 整体移除，回到宿主内置语言集合。
+  - 最终保留：`src/client/i18n.tsx` 的 `LocaleId` + `intlLocale()` 映射表（zh→zh-CN、en→en-US），dashboard
+    三处 `Intl.DateTimeFormat`/`toLocaleString` 与 heatmap tooltip 统一走它（输出与改前一致，但不再散写
+    `locale === 'en' ? 'en-US' : 'zh-CN'`）；`useI18n` 继续从字典 `meta.locale` 取 locale。
+  - 测试 `test/i18n.test.ts` 5 → 9：双字典 key 集合、en 无 CJK、逐值非空、placeholder 一致、locale 身份与插值、
+    `intlLocale` 映射、`fmtCompact` 中英单位、简中/英文 host 错误映射。
+  - 文档：README 新增「界面语言」说明「只跟随 DSH 内置语言、不额外注册语言包」；DESIGN_NOTES / LEARNINGS 记录
+    language pack 不可行的原因，以及 locale 身份与 Intl tag 分离的经验。
+  - Verify：`pnpm run build` / `typecheck` exit 0；`node test/run.mjs` 70/70；回退后 3080 实测语言菜单仅
+    「中文 / English」、`<html lang>=zh-CN`、仪表盘与悬浮窗简中、console error 0 / pageerror 0；版本 0.8.2 打
+    tag 发布。
+
 - （轮次 56）`feat(nav)`: 五项导航/布局改造（用户：「切到额度tab时候把下面的对话框隐藏」「侧边栏加额度按钮，
   上面或下面」「额度tab位置可拖动配置」「高峰/缓存放到会话成本排行下面」「图片用量并进用量趋势并加切换动画」）。
   - 对话框：仪表盘挂在会话滚动容器时给 `<html>` 加 `data-dq-quota-view`，CSS 隐藏 composer slot；切回对话

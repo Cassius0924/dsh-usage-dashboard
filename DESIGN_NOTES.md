@@ -281,6 +281,25 @@
 - 保留的是**口径与审计事实**：费用为估算、近 N 天、统计范围/缺口、计价说明、错误信息与空态一句短句。
   空态从「还没有用量记录。在 DSH 里跑一轮对话，这里会出现…」压成「还没有用量记录。」。
 
+## i18n 与 DSH 内置语言对齐（轮次 57）
+
+语言集合 = DSH 内置的两种：简中 `zh`（`<html lang>` 内部用 `zh-CN`）与英文 `en`。语言选择只走宿主
+「Settings → Language」，插件不自造开关，也**不往宿主语言目录里加语言**。
+
+- **不加语言包是有意决策**：宿主内置 locale 只有 `zh`/`en`，第三方语言要靠插件的 `ctx.locale.addLanguage`
+  注册。轮次 57 曾完整做过繁中 `zh-Hant`（词典 + language pack + 测试），但宿主其他包没有对应字典，
+  选中后宿主界面只能回落简中，于是**宿主 UI 与仪表盘语言不一致**；用户判断繁中本就不是 DSH 支持的设置项，
+  插件应对齐宿主而不是自造语言。该功能已移除，`addLanguage` 注册路径不进产品代码。
+- **词典以 `zh` 为唯一 key 来源**：`LocaleKey = keyof typeof zh`，`en` 是 `Record<LocaleKey, string>`，
+  漏 key 编译期就报；测试再守 key 集合、placeholder 集合与 en 无 CJK。
+- **locale 身份 ≠ Intl tag**：`LocaleId` 用于字典、偏好与 `<html lang>`；`intlLocale()` 映射到
+  `zh-CN` / `en-US` 专供 `Intl` 日期与数字格式化。组件里不再散写 `locale === 'en' ? 'en-US' : 'zh-CN'`：
+  日期格式、热力图 tooltip 数字等所有 `Intl` 调用统一走这个映射，避免「界面语言」与「格式化区域」各自漂移。
+  `useI18n` 仍从字典自带的 `meta.locale` 取实际 locale（slot 组件只拿得到 `t`，拿不到宿主 locale 快照）。
+- 数字缩写 `fmtCompact` 只区分中/英：中文用 万/亿，英文用 `Intl` compact notation。
+
+## 计价
+
 ## 计价
 
 - 费用是**估算**，UI 必须让用户看得到「按什么价算的」。

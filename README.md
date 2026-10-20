@@ -11,7 +11,7 @@
 装上之后 GUI 里多两样东西：右下角一个可拖动的**悬浮额度窗**，顶部栏多一个**「额度」tab**。
 还能在「额度 → 设置」里加一个**侧边栏额度入口**（顶部或底部，点开账号级额度页）、**拖动调整「额度」tab 的位置**。
 额度页会收起聊天输入框，把整屏留给数据；「图片 / 多模态用量」并入用量趋势卡，切换 7 天 / 30 天 / 90 天 / 1 年
-时随图片有无平滑展开或收起。界面支持中文与 English，直接跟随 DSH 全局的「Settings → Language」设置；
+时随图片有无平滑展开或收起。界面支持简体中文与 English，直接跟随 DSH 全局的「Settings → Language」设置；
 切换无需刷新，选择由 DSH 持久化。
 
 ---
@@ -146,6 +146,17 @@ dsh plugin --profile web add ./path/to/dsh-usage-dashboard
 > 兼容性：同时支持两代宿主接口——旧版 `readFrom(id, 0)` 与新版 handle 化 `open(id, 'read')` / `read` / `close`。
 > 宿主升级到移除 `readFrom` 的版本后，插件无需更换版本，会话日志照常重放。
 
+## 界面语言
+
+跟随 DSH 全局的 **Settings → Language**，切换即时生效、无需刷新，选择由 DSH 持久化：
+
+- **简体中文** —— DSH 内置 `zh`；
+- **English** —— DSH 内置 `en`。
+
+插件只提供这两种语言，与宿主内置语言保持一致，**不额外注册语言包**：语言目录属于宿主的设置面，
+插件私自加一门宿主没翻译的语言，会让宿主界面和仪表盘说两种语言（宿主只能回落到简中）。
+日期与数字格式化按当前语言取对应的 `Intl` 标签（`zh-CN` / `en-US`），不随浏览器区域设置漂移。
+
 ## 费用是怎么算的
 
 费用是**估算**，不是账单。规则都在 [`src/pricing.ts`](src/pricing.ts) 一个文件里：
@@ -199,7 +210,7 @@ src/
     ├── dashboard.tsx # 「额度」tab
     ├── charts.tsx  # 柱状图 / 热力图 / tooltip
     ├── locales.ts  # 中英文完整词典
-    ├── i18n.tsx    # DSH locale 桥接与翻译上下文
+    ├── i18n.tsx    # DSH locale 桥接与 Intl 标签映射
     ├── styles.ts   # 全部样式
     ├── api.ts      # fetch + 客户端缓存
     ├── cache.ts    # TTL 缓存（含 localStorage 持久化）

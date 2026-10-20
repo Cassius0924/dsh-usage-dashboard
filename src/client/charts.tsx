@@ -1,7 +1,7 @@
 /** Dependency-free bar chart and heatmap primitives. */
 import { useEffect, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactElement } from 'react'
 import { isTapGesture, lastPopulatedIndex, maxOrOne, nextChartFocus, nextPinnedIndex, stackedTotals, type ChartFocusKey } from './chart-focus.ts'
-import { useI18n, type LocaleId } from './i18n.tsx'
+import { intlLocale, useI18n, type LocaleId } from './i18n.tsx'
 import type { LocaleKey } from './locales.ts'
 
 export interface BarDatum {
@@ -333,7 +333,7 @@ export function Heatmap(props: { data: HeatDatum[] }): ReactElement {
                 if (datum === null) return <div key={d} className="dq-heat-cell dq-heat-cell--pad" />
                 const text = t('chart.tooltip', {
                   head: datum.date,
-                  tokens: datum.total.toLocaleString(locale === 'en' ? 'en-US' : 'zh-CN'),
+                  tokens: datum.total.toLocaleString(intlLocale(locale)),
                   cost: datum.cost.toFixed(2),
                   calls: t('common.calls', { count: datum.calls }),
                 })
@@ -384,6 +384,14 @@ export const fmt = (v: string | number): string => {
 
 export const fmtInt = (v: number | undefined): string => Math.round(Number(v) || 0).toLocaleString()
 
+/**
+ * Compact token/count formatting. English delegates to `Intl` compact notation;
+ * Simplified Chinese keeps the 万/亿 scale words because "1.6万 tokens" reads
+ * faster than "16K tokens" to Chinese readers.
+ * @param v - raw number of tokens or calls.
+ * @param locale - active plugin locale; defaults to Simplified Chinese.
+ * @returns the compact string.
+ */
 export const fmtCompact = (v: number | undefined, locale: LocaleId = 'zh'): string => {
   const n = Number(v) || 0
   if (locale === 'en') {
