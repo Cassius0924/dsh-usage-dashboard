@@ -329,3 +329,89 @@ export interface SessionUsageResponse {
   error?: string
   data?: SessionUsageData
 }
+
+/**
+ * Per-session peak pause.
+ *
+ * A conversation can opt in to pausing its own user-started work while
+ * DeepSeek's peak pricing is active (Beijing time, Monday–Friday 09:00–12:00
+ * and 14:00–18:00). The opt-in is stored per session and the switch lives in
+ * that conversation's composer dock; the 额度 page lists the sessions that
+ * opted in and carries the master switch. Parked steps resume at 18:00.
+ *
+ * Deliberately not offered to scheduled automation: a reminder-triggered turn
+ * runs normally even inside an opted-in session, and sessions that never opted
+ * in are never parked.
+ */
+export interface BreakerSettings {
+  /** Master switch; off means no session pauses, whatever its own switch says. */
+  enabled: boolean
+  /** Session ids whose user-started turns pause during peak pricing. */
+  sessions: string[]
+}
+
+/** State used when nothing has been persisted yet: feature on, no session opted in. */
+export const BREAKER_DEFAULT_SETTINGS: BreakerSettings = { enabled: true, sessions: [] }
+
+/**
+ * One settings write. A body with `sessionId` flips that conversation's switch;
+ * a body without one flips the master switch.
+ */
+export interface BreakerSettingsRequest {
+  enabled: boolean
+  sessionId?: string
+}
+
+/** Optional target for a manual release; omitted means every parked session. */
+export interface BreakerReleaseRequest {
+  sessionId?: string
+}
+
+/** Live peak-pause projection served by the host half. */
+export interface BreakerData {
+  /** Master switch; when off, nothing pauses regardless of per-session state. */
+  enabled: boolean
+  /** Sessions whose user-started turns pause during peak pricing. */
+  sessions: string[]
+  /** Sessions with at least one parked step right now. */
+  holding: string[]
+  /** Host clock at projection time, ISO 8601. */
+  now: string
+  /** Whether `now` is inside a Beijing-time peak window. */
+  peak: boolean
+  /** When parked work resumes (ISO 8601), or null outside peak. */
+  resumeAt: string | null
+  /** Human-readable peak windows in Beijing time, for display only. */
+  peakWindows: string[]
+}
+
+export interface BreakerResponse {
+  ok: boolean
+  error?: string
+  data?: BreakerData
+}
+
+/** Same-origin routes the client fetches: `state` answers GET (read) and PUT
+ *  (either switch), `release` answers POST (let parked work go now). */
+export const BREAKER_API = {
+  state: '/api/dsh-usage-dashboard/breaker',
+  release: '/api/dsh-usage-dashboard/breaker/release',
+} as const
+
+/** Structural validation for the persisted settings document. */
+export const isBreakerSettings = (value: unknown): value is BreakerSettings => {
+  if (typeof value !== 'object' || value === null) return false
+  const candidate = value as { enabled?: unknown; sessions?: unknown }
+  return typeof candidate.enabled === 'boolean'
+    && Array.isArray(candidate.sessions)
+    && candidate.sessions.every(session => typeof session === 'string' && isValidSessionId(session))
+}
+
+/** Structural validation for one settings write. */
+export const isBreakerSettingsRequest = (value: unknown): value is BreakerSettingsRequest => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const candidate = value as { enabled?: unknown; sessionId?: unknown }
+  if (typeof candidate.enabled !== 'boolean') return false
+  if (candidate.sessionId === undefined) return true
+  return typeof candidate.sessionId === 'string' && isValidSessionId(candidate.sessionId)
+}

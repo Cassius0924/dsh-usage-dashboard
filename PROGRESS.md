@@ -95,6 +95,55 @@
 
 ## 已完成（续）
 
+- （轮次 58）`feat(breaker)`: 会话级高峰暂停——对话输入框旁开关，高峰暂停、18:00 继续（用户：「插件可以搞个熔断
+  功能，到了高峰期暂停，然后到了 18 点后继续任务」，随后收敛为「这个功能不应该想全局的，也不用对自动化任务开放，
+  就对普通会话开放就好……对话界面的某个地方应该得有个开关，控制这个会话是否自动熔断啥的，额度里这是管理开启
+  开关的会话」；同轮追加反馈：「熔断这个名词不太产品化，换一下」「熔断按钮现在很难分辨是否已经打开了，要么文字
+  变动要么图标变动」「设置里还需要一个总开关」）。
+  - 名词：用户可见文案统一为「高峰暂停」（英文 Peak pause），不再出现「熔断」；内部代码标识保持 `breaker`
+    （路由/文件名/标识符），不出现在界面上。
+  - 范围：只对**普通会话的用户回合**生效。开关按会话存（宿主保存已开启的 session id 列表），没开启的会话完全
+    不受影响；定时任务（`schedule`）、目标续跑、子代理 relay 等自动触发的回合即使会话已开启也不挂起。
+  - 行为：高峰窗（北京时间周一至周五 09:00–12:00、14:00–18:00）内，已开启会话的用户回合在 `agent/pre-step`
+    步骤边界挂起，**18:00 自动继续**；12:00–14:00 午间闲时不放行（对应用户原话，避免来回启停）。后续 step 的
+    messages 可能为空，按 `(sessionId, turn)` 记住首步判定；手动「立即全部继续」/关闭该会话开关/关闭总开关/
+    turn abort 都会立刻放行，手动放行后同回合后续 step 不再挂。
+  - 入口：`conversation.composer.dock` 新增「高峰暂停」pill，**三态用文字 + 图标 + 颜色同时区分**：关闭「高峰暂停 ·
+    关」（描边图标、弱化色）、开启「高峰暂停 · 开」（实心图标、主色）、正在暂停「已暂停 · 18:00」（实心图标、警示色）；
+    title/aria-label 说明当前状态、18:00 继续与总开关状态。点击乐观切换 → PUT → 以宿主投影为准，失败回滚并在
+    title/aria 里体现。轮询 10s（挂起状态会在回合中间出现）。
+  - 总开关：额度页「设置」卡新增「高峰暂停」总开关（checkbox + 说明），关掉后所有会话都不再暂停、每会话开关
+    保留；`PUT /breaker { enabled }` 落盘。管理卡在总开关关闭时状态行显示「总开关已关闭，
+    所有会话都不暂停」、列表弱化、隐藏「立即全部继续」。
+  - 管理：额度页「高峰暂停」卡（高峰/闲时 + 缓存卡之后、设置卡之前）——状态行（闲时/高峰/已暂停 N 个会话 ·
+    18:00 继续 + 立即全部继续）、已开启会话列表（标题 + 挂起态 + 关闭开关，标题来自 usage 投影、缺失时按 id
+    懒加载 `fetchSessionUsage`、失败回落短 id）、空态提示去对话里开启。
+  - 宿主：设置文件 `$DSH_HOME/storages/dsh-usage-dashboard/breaker.json`，内容 `{ enabled, sessions: string[] }`
+    （原子写、坏文件回退默认值并 warn、load 时去重/排序/过滤非法 id；缺 `enabled` 的旧文件按开启读入）；路由
+    `GET /breaker`、`PUT /breaker`（`BreakerSettingsRequest`：带 `sessionId` 切会话，不带切总开关；8KB/400/413/405）、
+    `POST /breaker/release`（可选 `sessionId`，空 body = 全部放行）；pre-step 用 `payload.agent.id` 作 sessionId，
+    异常只 warn 放行，abort 必须 resolve 后继续；总开关关闭时闸门不挂起、并释放已挂起点。
+  - 迁移：旧版「全局开关 + 自动任务也拦 + 12–14 闲时放行」的实现与契约（`BreakerScope`/`useIdleWindow`）全部删除；
+    上一轮「会话级」形状的 `breaker.json` 缺 `enabled` 时按开启读入。
+  - Verify：113/113 单测（宿主 35 个：峰/闲/周五/周末与旧价 era 边界、用户回合判定、自动化 schedule/goal/subagent
+    豁免、turn 记忆、release 全部/单会话/记忆、关闭会话不触发 bypass、关闭总开关释放、abort、dispose、clamp、
+    设置读写往返/缺 enabled 容错/坏文件与非法 id、路由 200/400/405/413/500/403/404、pre-step 与总开关集成、启动加载；
+    客户端 8 个纯函数用例：响应校验、北京时间、会话开关、三态映射、相位（含 masterOff）、withSessionToggled、
+    短 id）；`tsc --noEmit`、`tsc -p tsconfig.test.json`、`node build.mjs` exit 0。
+  - 真实环境：构建后靠 HMR profile 重组合热重载宿主插件（未重启 dsh.service），curl 实测 GET 投影含
+    `enabled:true / peak / resumeAt / sessions / holding`；PUT 会话与总开关分别落盘（关总开关保留 sessions）；
+    非法 body → 400；POST release 空 body → 200。Playwright 真实 GUI：对话页 pill 关闭态「高峰暂停 · 关」→ 点击变
+    「高峰暂停 · 开」（aria-pressed/class/主色同步，宿主 sessions 出现该会话）；额度页「设置」卡总开关取消勾选后
+    宿主 `enabled:false` 且落盘，管理卡状态行变「总开关已关闭，所有会话都不暂停」、列表弱化、隐藏立即继续，
+    切回对话时 pill **立刻**变回关闭态并说明「总开关已在额度页关闭」（两个界面共用同一个投影 store，不等轮询）；
+    重新打开总开关、关闭会话开关后状态清空；mock 投影下实测挂起态 pill「已暂停 · 18:00」/管理卡「已暂停 1 个会话 ·
+    18:00 继续 + 立即全部继续 + 打招呼 暂停中 · 18:00」；320px 下 `documentElement.scrollWidth == innerWidth`、
+    管理卡无横向溢出、控制台无新增报错（仅宿主既有的 `sessions.retain: unknown session`）。
+  - 交互细节：pill 三态 = 文字（关/开/已暂停·18:00）+ 图标（描边/实心/实心）+ 颜色（中性/主色/警示色），灰度也
+    可分辨；pill 10s 轮询，挂起状态会在回合中间出现。
+  - 截图：`docs/breaker.png`（额度页「高峰暂停」卡，含挂起态）、`docs/breaker-narrow.png`（320px 同卡）、
+    `docs/breaker-states.png`（开关三态：关 / 开 / 已暂停）。
+
 - （轮次 57）`feat(i18n)`: i18n 对齐 DSH 内置语言（简中 / English），补 Intl 区域映射。用户先要求「支持一下
   i18n，目前只搞简体中文、繁体中文、英文。new 一个 worktree 开发」，实测后改为「繁体中文是 dsh 本来就不支持
   的，那我们也不同额外支持，对齐 dsh 的设置就行」。按用户要求在独立 worktree

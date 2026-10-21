@@ -131,3 +131,33 @@ export interface HostContext extends Context {
    *  through `ctx.get()` so API-key-only deployments keep loading. */
   deepseekAccount?: DeepSeekAccountFace
 }
+
+/** One proposed agent step, as the host's `agent/pre-step` waterfall hands it
+ *  to listeners. Only the fields this plugin reads are declared. */
+export interface PreStepPayloadFace {
+  agent: { id?: string }
+  messages: readonly { source?: { kind?: string } }[]
+  turn: number
+  step: number
+  signal: AbortSignal
+}
+
+/** What a `agent/pre-step` listener returns: reject the step, or enter it with
+ *  the messages the chain ended up carrying (see the waterfall's `next()`). */
+export type PreStepDecisionFace =
+  | { kind: 'reject' }
+  | { kind: 'enter'; messages: readonly { source?: { kind?: string } }[] }
+
+/**
+ * Minimal structural face for the host events this plugin listens to. The DSH
+ * event table is augmented by the `@deepseek-ai/dsh-*` packages, which this
+ * package deliberately does not depend on (see the module comment above), so
+ * the host's `ctx.on('agent/pre-step', …)` is reached through this face.
+ */
+export interface HostEventFace {
+  on(
+    name: 'agent/pre-step',
+    listener: (payload: PreStepPayloadFace, next: () => Promise<PreStepDecisionFace>) => Promise<PreStepDecisionFace>,
+  ): () => void
+}
+
