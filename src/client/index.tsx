@@ -13,6 +13,7 @@ import { LocaleProvider, type Translate } from './i18n.tsx'
 import { QUOTA_PANEL_ID, quotaTabIndexStore, sidebarEntryStore, viewOrderForIndex } from './layout-prefs.ts'
 import { en, NS, zh } from './locales.ts'
 import { MessageCost } from './message-cost.tsx'
+import { SessionCostPill } from './session-cost-pill.tsx'
 import { css } from './styles.ts'
 import { quotaViewActiveStore } from './store.ts'
 import { QuotaWidget, type UseSessionsHook } from './widget.tsx'
@@ -68,6 +69,18 @@ export function apply(ctx: ClientContext): void {
     ({ t: slotT, useSessions }: { t: Translate; useSessions: UseSessionsHook }) => (
       <LocaleProvider t={slotT}>
         <ErrorBoundary t={slotT} silent><QuotaWidget useSessions={useSessions} views={views} /></ErrorBoundary>
+      </LocaleProvider>
+    ),
+  ))
+
+  // Composer-dock session reading: one more pill beside the host's own
+  // 「会话统计」/「Token 用量」entries (same slot, same skin), showing the
+  // whole conversation's estimated spend and opening a detail dialog.
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(
+    { name: 'conversation.composer.dock', id: 'quota-cost', order: 2, locale: NS },
+    ({ t: slotT, sessionId }: { t: Translate; sessionId?: string }) => (
+      <LocaleProvider t={slotT}>
+        <ErrorBoundary t={slotT} silent><SessionCostPill sessionId={sessionId} /></ErrorBoundary>
       </LocaleProvider>
     ),
   ))

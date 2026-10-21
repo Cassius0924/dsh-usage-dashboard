@@ -37,12 +37,31 @@ export const css = `
 .dq-message-cost-amount{text-decoration-line:underline;text-decoration-style:dotted;text-decoration-color:currentColor;text-underline-offset:4px}
 .dq-message-cost:hover{color:var(--dsw-alias-label-secondary,#3f4852)}
 .dq-message-cost:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px;border-radius:4px}
-.dq-message-cost::after{content:attr(data-dq-tooltip);position:absolute;left:0;top:calc(100% + 6px);z-index:2147483001;width:max-content;max-width:min(240px,calc(100vw - 24px));padding:6px 9px;border-radius:8px;background:var(--dsw-alias-tooltip-bg,#1f2328);color:var(--dsw-static-neutral-bluish-00,#fff);box-shadow:0 6px 18px rgba(0,0,0,.22);font-size:12px;font-weight:400;line-height:1.5;text-align:left;white-space:normal;pointer-events:none;opacity:0;visibility:hidden;transform:translateY(-3px);transition:opacity .12s ease-out,transform .12s cubic-bezier(.22,1,.36,1),visibility 0s linear .12s}
+.dq-message-cost::after{content:attr(data-dq-tooltip);position:absolute;left:0;bottom:calc(100% + 6px);top:auto;z-index:2147483001;width:max-content;max-width:min(240px,calc(100vw - 24px));padding:6px 9px;border-radius:8px;background:var(--dsw-alias-tooltip-bg,#1f2328);color:var(--dsw-static-neutral-bluish-00,#fff);box-shadow:0 6px 18px rgba(0,0,0,.22);font-size:12px;font-weight:400;line-height:1.5;text-align:left;white-space:normal;pointer-events:none;opacity:0;visibility:hidden;transform:translateY(3px);transition:opacity .12s ease-out,transform .12s cubic-bezier(.22,1,.36,1),visibility 0s linear .12s}
 .dq-message-cost:hover::after,.dq-message-cost:focus-visible::after{opacity:1;visibility:visible;transform:translateY(0);transition:opacity .12s ease-out,transform .12s cubic-bezier(.22,1,.36,1),visibility 0s linear}
 @media (hover:hover){
   [data-time-hover-root] .dq-message-cost{opacity:0;transition:opacity 80ms ease}
   [data-time-hover-root]:hover .dq-message-cost,[data-time-hover-root]:focus-within .dq-message-cost{opacity:1}
 }
+/* Composer-dock session cost pill: one more reading beside the host's own
+   「会话统计」/「Token 用量」pills (same slot, same compact skin). */
+.dq-cost-anchor{display:inline-flex;min-width:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:calc(20px + var(--dsh-content-font-delta-secondary,0px))}
+.dq-cost-pill{display:inline-flex;align-items:center;gap:6px;box-sizing:border-box;max-width:100%;padding:1px 8px;border:0;border-radius:var(--dsw-radius-sm,8px);background:transparent;color:var(--dsw-alias-label-tertiary,#59636e);font:inherit;font-variant-numeric:tabular-nums;line-height:inherit;white-space:nowrap;cursor:pointer}
+.dq-cost-pill:hover,.dq-cost-pill[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover,rgba(120,130,150,.12));color:var(--dsw-alias-label-secondary,#59636e)}
+.dq-cost-pill:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
+.dq-cost-pill svg{flex:none}
+.dq-cost-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* Click-open breakdown: the host stat-dialog skin (menu surface, prominent
+   elevation, 12/18 rows), portaled to the body and placed above the pill. */
+.dq-cost-panel{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;min-width:min(300px,calc(100vw - 24px));max-width:min(440px,calc(100vw - 24px));padding:16px;border:0;border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-specific-menu,var(--dsw-alias-bg-overlay,#fff));-webkit-backdrop-filter:var(--dsw-menu-backdrop-filter,blur(40px) saturate(150%));backdrop-filter:var(--dsw-menu-backdrop-filter,blur(40px) saturate(150%));box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgba(0,0,0,.24));font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#59636e);cursor:default}
+.dq-cost-panel-title{display:flex;justify-content:space-between;gap:16px;margin-bottom:8px;color:var(--dsw-alias-label-primary,#1f2328);font-weight:500}
+.dq-cost-panel-title-label{display:inline-flex;align-items:center;gap:6px;min-width:0}
+.dq-cost-panel-title-label svg{flex:none}
+.dq-cost-panel-value{font-variant-numeric:tabular-nums}
+.dq-cost-panel-rule{margin-bottom:10px;border-top:.5px solid var(--dsw-alias-border-l2,rgba(0,0,0,.1))}
+.dq-cost-details{display:grid;grid-template-columns:minmax(76px,auto) minmax(0,1fr);gap:6px 16px;margin:0;color:var(--dsw-alias-label-tertiary,#59636e)}
+.dq-cost-details dt,.dq-cost-details dd{min-width:0;margin:0}
+.dq-cost-details dd{color:var(--dsw-alias-label-secondary,#59636e);font-variant-numeric:tabular-nums;text-align:right}
 /* 卡片间距（此处 gap）刻意大于卡内小节间距（margin-top:12/14/16px 那一档），制造"卡片外疏、卡片内密"的
    疏密对比：24px 相对卡内最大档 16px 仍有 1.5 倍级差，相对常见档 12px 有 2 倍级差，不与 .dq-card 的
    padding（16px/20px，卡片内部呼吸感，轮次 36 已定）混同。 */
