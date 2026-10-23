@@ -51,18 +51,6 @@ export const css = `
 .dq-cost-pill:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
 .dq-cost-pill svg{flex:none}
 .dq-cost-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis}
-/* 高峰暂停 pill: same dock/skin as the cost pill. The three states never rely
-   on colour alone — copy changes and the glyph switches outline→solid — but the
-   tone reinforces them: off stays neutral tertiary, on uses the primary colour,
-   holding uses the warn tone. Nothing here may widen the dock row. */
-.dq-breaker-pill{font-variant-numeric:normal}
-.dq-breaker-pill--off{color:var(--dsw-alias-label-tertiary,#59636e)}
-.dq-breaker-pill--off:hover{color:var(--dsw-alias-label-secondary,#59636e)}
-.dq-breaker-pill--on{color:var(--dsw-alias-state-business-primary,#0969da)}
-.dq-breaker-pill--on:hover{color:var(--dsw-alias-state-business-primary,#0969da)}
-.dq-breaker-pill--holding{color:var(--dq-text-warn,#9a6700)}
-.dq-breaker-pill--holding:hover{color:var(--dq-text-warn,#9a6700)}
-.dq-breaker-pill:disabled{cursor:default;opacity:.7}
 /* Click-open breakdown: the host stat-dialog skin (menu surface, prominent
    elevation, 12/18 rows), portaled to the body and placed above the pill. */
 .dq-cost-panel{position:fixed;z-index:1100;box-sizing:border-box;width:max-content;min-width:min(300px,calc(100vw - 24px));max-width:min(440px,calc(100vw - 24px));padding:16px;border:0;border-radius:var(--dsw-radius-lg,16px);background:var(--dsw-specific-menu,var(--dsw-alias-bg-overlay,#fff));-webkit-backdrop-filter:var(--dsw-menu-backdrop-filter,blur(40px) saturate(150%));backdrop-filter:var(--dsw-menu-backdrop-filter,blur(40px) saturate(150%));box-shadow:var(--dsw-elevation-prominent,0 12px 32px rgba(0,0,0,.24));font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif);font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary,#59636e);cursor:default}
@@ -340,22 +328,6 @@ export const css = `
    package.json (see build.mjs) so it can never drift from the release. */
 .dq-footer{margin:16px 0 0;font-size:12px;text-align:center;color:var(--dsw-alias-label-tertiary,#59636e)}
 .dq-number{width:82px;padding:5px 8px;font-size:13px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.16));background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#1f2328);font-variant-numeric:tabular-nums}
-/* 高峰暂停卡：说明、状态行与会话列表。320px 下标题省略、状态与开关换行，
-   列表行不允许撑出卡片宽度。总开关关闭时列表整体弱化，但每会话开关仍可操作。 */
-.dq-breaker-desc{margin:-6px 0 0}
-.dq-breaker-status{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0;margin-top:10px;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary,#59636e)}
-.dq-breaker-list{display:flex;flex-direction:column;margin:12px 0 0;padding:0;list-style:none;min-width:0}
-.dq-breaker-list--muted{opacity:.62}
-.dq-breaker-row{display:flex;align-items:center;gap:12px;min-width:0;padding:9px 0;border-top:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.10))}
-.dq-breaker-row:first-child{border-top:0;padding-top:0}
-.dq-breaker-row-main{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;flex:1 1 auto;min-width:0}
-.dq-breaker-row-title{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;color:var(--dsw-alias-label-primary,#1f2328)}
-.dq-breaker-row-state{font-size:12px;line-height:1.5;white-space:nowrap;color:var(--dq-text-warn)}
-.dq-breaker-switch{display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:pointer}
-.dq-breaker-switch input{width:16px;height:16px;margin:0;accent-color:var(--dsw-alias-state-business-primary,#0969da);cursor:pointer}
-.dq-breaker-switch input:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
-.dq-breaker-switch input:disabled{cursor:default;opacity:.6}
-.dq-breaker-error{margin-top:8px;font-size:12px;line-height:1.5}
 .dq-number:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:1px;border-color:transparent}
 .dq-links-title{font-size:13px;font-weight:500;color:var(--dsw-alias-label-primary,#1f2328);margin:0 0 12px}
 .dq-links{display:flex;flex-wrap:wrap;gap:8px}

@@ -7,9 +7,7 @@
  */
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactElement, type ReactNode } from 'react'
 import { USAGE_WINDOW_DAYS } from '../contract.ts'
-import { fetchBalance, fetchBreaker, fetchSessionUsage, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt, releaseBreaker, updateBreaker } from './api.ts'
-import { beijingClock, breakerIsUsable, breakerPhase, shortSessionId, withMasterToggled, withSessionToggled, type BreakerPhase } from './breaker.ts'
-import { publishBreakerData, useBreakerData } from './breaker-state.ts'
+import { fetchBalance, fetchSessionUsage, fetchUsage, getCachedBalance, getCachedUsage, getCachedUsageAt } from './api.ts'
 import { budgetSnapshot } from './budget.ts'
 import { Bars, GroupedBars, Heatmap, MODEL_COLORS, fmt, fmtCompact, fmtInt } from './charts.tsx'
 import { getComposerElement, getComposerInputElement, getShellFrame } from './dom.ts'
@@ -36,23 +34,6 @@ declare const __PLUGIN_LABEL__: string
  *  three; see LEARNINGS.md). Kept in sync with the small margin added in
  *  styles.ts's `.dq-balance` narrow media query. */
 const COMPOSER_FALLBACK_PX = 126
-
-/**
- * Session titles already present in the usage projection, keyed by id. The
- * top-level list is capped at the most expensive sessions, so the per-window
- * lists are folded in as well; anything still missing is fetched lazily by
- * the breaker card (see the title effect below).
- */
-function usageTitleMap(usage: UsageData | null): Map<string, string> {
-  const titles = new Map<string, string>()
-  for (const session of usage?.sessions ?? []) titles.set(session.id, session.title)
-  for (const window of usage?.windows ?? []) {
-    for (const session of window.sessions) {
-      if (!titles.has(session.id)) titles.set(session.id, session.title)
-    }
-  }
-  return titles
-}
 
 /** One shimmering placeholder block, sized by the caller. */
 function Skel(props: { w: number; h: number }): ReactElement {
@@ -985,24 +966,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
   useEffect(() => props.views.subscribe(() => setViewTabs(props.views.list())), [props.views])
   const [lowBalance, setLowBalance] = useState(lowBalanceStore.get())
   const [monthlyBudget, setMonthlyBudget] = useState(monthlyBudgetStore.get())
-  // 会话级高峰暂停：宿主持久化总开关与已开启的会话 id（契约见 src/contract.ts 末尾），
-  // 额度页做管理与总开关。`breakerData` 是最近一次宿主投影；开关先乐观更新，写入后以
-  // 宿主返回的 data 为准，失败再回退并只在本卡显示错误。
-  const breakerData = useBreakerData()
-  const [breakerLoadError, setBreakerLoadError] = useState<string | null>(null)
-  const [breakerActionError, setBreakerActionError] = useState<string | null>(null)
-  const [breakerReleasing, setBreakerReleasing] = useState(false)
-  const [breakerSavingId, setBreakerSavingId] = useState<string | null>(null)
-  const [breakerSavingMaster, setBreakerSavingMaster] = useState(false)
-  // 会话标题的懒加载结果与已请求集合：usage 投影只保留花费最高的几个会话，
-  // 其余按 id 各请求一次，失败则回落到短 id。
-  const [breakerTitles, setBreakerTitles] = useState<Record<string, string>>({})
-  const breakerTitleRequests = useRef(new Set<string>())
-  // 单调递增的写序号：一次轮询如果在某次 PUT/POST 开始前发出、在其结束后才返回，
-  // 不能把这次写操作刚拿到的会话列表覆盖回旧值。
-  const breakerMutationSeq = useRef(0)
-  // 卸载后异步标题请求不再写状态（本页可能因切换 tab 而卸载）。
-  const breakerMounted = useRef(true)
   const [barMode, setBarMode] = useState<'daily' | 'hourly'>('daily')
   const [selectedModels, setSelectedModels] = useState<string[]>([])
   const [windowDays, setWindowDays] = useState<UsageWindowDays>(usageWindowStore.get())
@@ -1225,62 +1188,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.sessionId])
 
-  // 额度页挂载期间轻量轮询高峰暂停投影：挂载时先拉一次，之后闲时 30s、高峰且有
-  // 会话开启时 5s 一次（挂起状态会在一轮中间出现，慢了就会看到过期的「运行中」）；
-  // 卸载即清理。读取失败只把本卡状态行降级成「状态暂不可用」，页面其余部分照常
-  // 渲染（宿主尚未重启、路由不存在时也是如此）。
-  useEffect(() => {
-    let cancelled = false
-    let timer: number | undefined
-    let fast = false
-    const pull = async (): Promise<void> => {
-      const seqAtStart = breakerMutationSeq.current
-      const res = await fetchBreaker()
-      if (cancelled) return
-      if (!breakerIsUsable(res)) {
-        setBreakerLoadError(res.error ?? '')
-        return
-      }
-      fast = res.data.enabled && res.data.peak && res.data.sessions.length > 0
-      setBreakerLoadError(null)
-      // 本请求发出后又开始了写入：会话列表由写的响应决定，不用旧投影覆盖。
-      if (seqAtStart !== breakerMutationSeq.current) return
-      publishBreakerData(res.data)
-    }
-    const loop = async (): Promise<void> => {
-      await pull()
-      if (cancelled) return
-      timer = window.setTimeout(() => { void loop() }, fast ? 5_000 : 30_000)
-    }
-    void loop()
-    return () => {
-      cancelled = true
-      if (timer !== undefined) window.clearTimeout(timer)
-    }
-  }, [])
-
-  useEffect(() => {
-    breakerMounted.current = true
-    return () => { breakerMounted.current = false }
-  }, [])
-
-  // 已开启会话的标题：先用 usage 投影（含各窗口 top 列表），缺少的按 id 懒加载
-  // 一次 fetchSessionUsage；请求集合保证同一会话只请求一次，失败保留空串回落到短 id。
-  useEffect(() => {
-    if (breakerData === null) return
-    const known = usageTitleMap(usage)
-    for (const sessionId of breakerData.sessions) {
-      if (known.has(sessionId) || breakerTitles[sessionId] !== undefined) continue
-      if (breakerTitleRequests.current.has(sessionId)) continue
-      breakerTitleRequests.current.add(sessionId)
-      void fetchSessionUsage(sessionId).then(res => {
-        if (!breakerMounted.current) return
-        const title = res.ok === true ? res.data?.title?.trim() ?? '' : ''
-        setBreakerTitles(current => ({ ...current, [sessionId]: title }))
-      })
-    }
-  }, [breakerData, usage, breakerTitles])
-
   useEffect(() => {
     const timer = window.setInterval(() => setFreshnessNow(Date.now()), 30_000)
     return () => window.clearInterval(timer)
@@ -1308,73 +1215,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
   const changeMonthlyBudget = (value: number): void => {
     setMonthlyBudget(value)
     monthlyBudgetStore.set(value)
-  }
-
-  /** 关闭某会话的高峰暂停：先乐观移除，再以宿主返回的投影为准；失败回退并只在
-   *  本卡显示错误，不影响页面其它部分。 */
-  const disableBreakerSession = async (sessionId: string): Promise<void> => {
-    if (breakerSavingId !== null || breakerReleasing || breakerSavingMaster) return
-    const previous = breakerData
-    publishBreakerData(withSessionToggled(previous, sessionId, false))
-    setBreakerActionError(null)
-    setBreakerSavingId(sessionId)
-    const seq = ++breakerMutationSeq.current
-    try {
-      const res = await updateBreaker({ sessionId, enabled: false })
-      if (seq !== breakerMutationSeq.current) return
-      if (breakerIsUsable(res)) {
-        publishBreakerData(res.data)
-        setBreakerLoadError(null)
-      } else {
-        publishBreakerData(previous)
-        setBreakerActionError(res.error ?? '')
-      }
-    } finally {
-      setBreakerSavingId(null)
-    }
-  }
-
-  /** 总开关：关掉后所有会话都不暂停，但各会话的开关保留。写入只带 enabled，
-   *  由宿主区分总开关与会话开关（见 contract.ts 的 BreakerSettingsRequest）。 */
-  const toggleBreakerMaster = async (enabled: boolean): Promise<void> => {
-    if (breakerSavingMaster || breakerSavingId !== null || breakerReleasing) return
-    const previous = breakerData
-    publishBreakerData(withMasterToggled(previous, enabled))
-    setBreakerActionError(null)
-    setBreakerSavingMaster(true)
-    const seq = ++breakerMutationSeq.current
-    try {
-      const res = await updateBreaker({ enabled })
-      if (seq !== breakerMutationSeq.current) return
-      if (breakerIsUsable(res)) {
-        publishBreakerData(res.data)
-        setBreakerLoadError(null)
-      } else {
-        publishBreakerData(previous)
-        setBreakerActionError(res.error ?? '')
-      }
-    } finally {
-      setBreakerSavingMaster(false)
-    }
-  }
-
-  const releaseBreakerNow = async (): Promise<void> => {
-    if (breakerReleasing || breakerSavingId !== null || breakerSavingMaster) return
-    setBreakerActionError(null)
-    setBreakerReleasing(true)
-    const seq = ++breakerMutationSeq.current
-    try {
-      const res = await releaseBreaker()
-      if (seq !== breakerMutationSeq.current) return
-      if (breakerIsUsable(res)) {
-        publishBreakerData(res.data)
-        setBreakerLoadError(null)
-      } else {
-        setBreakerActionError(res.error ?? '')
-      }
-    } finally {
-      setBreakerReleasing(false)
-    }
   }
 
   const changeWindowDays = (value: UsageWindowDays): void => {
@@ -1623,28 +1463,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
     { error: localizeApiError(notice.error, t, 'error.query') },
   )
   const errorText = error === null ? null : localizeApiError(error, t, 'error.query')
-
-  // 高峰暂停卡：只要最近一次读取失败就显示「状态暂不可用」，避免拿旧投影冒充当前
-  // 状态；恢复成功或写入成功后清除。总开关关闭优先于时段，单独一行状态。
-  const breakerPhaseNow: BreakerPhase = breakerLoadError !== null ? 'unavailable' : breakerPhase(breakerData)
-  const breakerResumeClock = beijingClock(breakerData?.resumeAt ?? null)
-  const breakerHeldCount = breakerData?.holding.length ?? 0
-  const breakerStatusText = breakerPhaseNow === 'unavailable'
-    ? t('breaker.statusUnavailable')
-    : breakerPhaseNow === 'masterOff'
-      ? t('breaker.statusMasterOff')
-      : breakerPhaseNow === 'peakHolding'
-        ? breakerResumeClock === null
-          ? t('breaker.statusHoldingNoClock', { count: breakerHeldCount })
-          : t('breaker.statusHolding', { count: breakerHeldCount, clock: breakerResumeClock })
-        : breakerPhaseNow === 'peak'
-          ? t('breaker.statusPeak')
-          : t('breaker.statusOffPeak')
-  const breakerUsageTitles = usageTitleMap(usage)
-  const breakerTitleFor = (sessionId: string): string => {
-    const title = breakerUsageTitles.get(sessionId) ?? breakerTitles[sessionId]
-    return title !== undefined && title !== '' ? title : shortSessionId(sessionId)
-  }
 
   const composerSafeAreaStyle = {
     '--dq-composer-h': `${composerHeight ?? COMPOSER_FALLBACK_PX}px`,
@@ -2010,71 +1828,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
       </div>
 
       <div className="dq-card">
-        <CardTitle>{t('breaker.title')}</CardTitle>
-        <div className="dq-setting-hint dq-breaker-desc">{t('breaker.desc')}</div>
-        <div className="dq-breaker-status">
-          <span
-            role="status"
-            className={breakerPhaseNow === 'peakHolding' ? 'dq-warn' : undefined}
-            title={breakerLoadError !== null && breakerLoadError !== '' ? breakerLoadError : undefined}
-          >
-            {breakerStatusText}
-          </span>
-          {breakerPhaseNow === 'peakHolding' && (
-            <button
-              type="button"
-              className="dq-refresh-btn"
-              disabled={breakerReleasing || breakerSavingId !== null}
-              aria-busy={breakerReleasing}
-              onClick={() => { void releaseBreakerNow() }}
-            >
-              {breakerReleasing ? t('breaker.releaseBusy') : t('breaker.release')}
-            </button>
-          )}
-        </div>
-        {breakerData === null ? (
-          <div className="dq-empty">
-            {breakerLoadError === null ? t('breaker.loading') : t('breaker.statusUnavailable')}
-          </div>
-        ) : breakerData.sessions.length === 0 ? (
-          <div className="dq-empty">{t('breaker.empty')}</div>
-        ) : (
-          <ul className={`dq-breaker-list${breakerPhaseNow === 'masterOff' ? ' dq-breaker-list--muted' : ''}`}>
-            {breakerData.sessions.map(sessionId => {
-              const title = breakerTitleFor(sessionId)
-              const holding = breakerData.holding.includes(sessionId)
-              return (
-                <li className="dq-breaker-row" key={sessionId}>
-                  <span className="dq-breaker-row-main">
-                    <span className="dq-breaker-row-title" title={title}>{title}</span>
-                    {holding && (
-                      <span className="dq-breaker-row-state">
-                        {t('breaker.holding', { clock: breakerResumeClock ?? '18:00' })}
-                      </span>
-                    )}
-                  </span>
-                  <label className="dq-breaker-switch" title={t('breaker.rowDisableAria', { title })}>
-                    <input
-                      type="checkbox"
-                      checked
-                      disabled={breakerSavingId !== null || breakerReleasing || breakerSavingMaster}
-                      aria-label={t('breaker.rowDisableAria', { title })}
-                      onChange={() => { void disableBreakerSession(sessionId) }}
-                    />
-                  </label>
-                </li>
-              )
-            })}
-          </ul>
-        )}
-        {breakerActionError !== null && (
-          <div className="dq-breaker-error dq-error" role="alert">
-            {t('breaker.actionError', { error: localizeApiError(breakerActionError, t, 'error.query') })}
-          </div>
-        )}
-      </div>
-
-      <div className="dq-card">
         <CardTitle>{t('settings.title')}</CardTitle>
         <div className="dq-links-title">{t('links.title')}</div>
         <div className="dq-links">
@@ -2106,21 +1859,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
               {widgetTabs.length === 0 ? t('settings.widgetTabsEmpty') : t('settings.widgetTabsHint')}
             </span>
           </div>
-        </div>
-        <label className="dq-toggle">
-          <input
-            type="checkbox"
-            checked={breakerData === null ? true : breakerData.enabled}
-            disabled={breakerData === null || breakerSavingMaster}
-            aria-describedby="dq-peak-pause-hint"
-            onChange={e => { void toggleBreakerMaster(e.target.checked) }}
-          />
-          <span>{t('settings.peakPause')}</span>
-        </label>
-        <div id="dq-peak-pause-hint" className="dq-toggle-hint">
-          {breakerData === null
-            ? breakerLoadError === null ? t('settings.peakPauseLoading') : t('breaker.statusUnavailable')
-            : t('settings.peakPauseHint')}
         </div>
         <div className="dq-setting">
           <label className="dq-setting-label" htmlFor="dq-low-balance">{t('settings.lowBalance')}</label>

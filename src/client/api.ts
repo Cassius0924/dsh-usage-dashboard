@@ -6,8 +6,8 @@
  * bypass its own memo via `?refresh=1`.
  */
 import { createCache } from './cache.ts'
-import { BREAKER_API, USAGE_WINDOW_DAYS } from '../contract.ts'
-import type { BalanceResponse, BreakerReleaseRequest, BreakerResponse, BreakerSettingsRequest, SessionUsageResponse, UsageResponse } from '../contract.ts'
+import { USAGE_WINDOW_DAYS } from '../contract.ts'
+import type { BalanceResponse, SessionUsageResponse, UsageResponse } from '../contract.ts'
 
 /** Mirror the host memos: balance 60s, usage 5min. */
 const BALANCE_TTL_MS = 60_000
@@ -192,47 +192,4 @@ export async function fetchSessionUsage(sessionId: string, force = false): Promi
   })
   sessionUsageInflight.set(sessionId, tracked)
   return tracked
-}
-
-/**
- * Session-scoped peak breaker (see `BREAKER_API` in ../contract.ts). Unlike
- * usage/balance these reads are tiny and stateful: no cache, always
- * `no-store`, and every failure comes back as `{ ok: false, error }` so the
- * pill and the 额度 card can degrade locally instead of touching the rest of
- * the page.
- */
-async function breakerRequest(url: string, init: { method: string; body?: string }): Promise<BreakerResponse> {
-  try {
-    const response = await fetch(url, {
-      method: init.method,
-      cache: 'no-store',
-      headers: init.body === undefined
-        ? { accept: 'application/json' }
-        : { accept: 'application/json', 'content-type': 'application/json' },
-      ...(init.body === undefined ? {} : { body: init.body }),
-    })
-    if (!response.ok) return { ok: false, error: `HTTP ${response.status}` }
-    return await response.json() as BreakerResponse
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : String(error) }
-  }
-}
-
-/** Current projection: opted-in sessions plus the live peak/holding status. */
-export async function fetchBreaker(): Promise<BreakerResponse> {
-  return breakerRequest(BREAKER_API.state, { method: 'GET' })
-}
-
-/** Write one switch: `sessionId` targets that conversation, omitting it targets
- *  the master switch. The host answers with the full projection. */
-export async function updateBreaker(request: BreakerSettingsRequest): Promise<BreakerResponse> {
-  return breakerRequest(BREAKER_API.state, { method: 'PUT', body: JSON.stringify(request) })
-}
-
-/** Let parked work continue now; an omitted target means every parked session. */
-export async function releaseBreaker(request?: BreakerReleaseRequest): Promise<BreakerResponse> {
-  return breakerRequest(
-    BREAKER_API.release,
-    request === undefined ? { method: 'POST' } : { method: 'POST', body: JSON.stringify(request) },
-  )
 }

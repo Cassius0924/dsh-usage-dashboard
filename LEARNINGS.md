@@ -234,17 +234,3 @@
   当时主 checkout 有未提交改动（甚至 `src/client/locales.ts` 正在被加 key），直接开工会互相污染，也没法安全
   build（会覆盖共享的 `lib/`）。从 master 起 worktree 后完全隔离；代价是工作树在 session workspace 之外，
   子代理的写范围只能用绝对路径在任务描述里约束（write_scopes 无法登记 workspace 外路径）。
-- **宿主插件改完 `lib/` 不必重启 `dsh.service`：HMR 会在「profile 重组合」时替换文件已变化的插件**（轮次 58）：
-  base bundle 的 `hmr` 用 `root: []` 关了源码 watch，但 profile patch / Plugin Manager 触发的重组合仍会
-  「replace plugins whose loaded files below the profile directory changed on disk」，linked package 的
-  `lib/` 变化也算。实测给 `~/.dsh/profiles/web/cordis.patch.yml` 追加一行注释 → 等 6–7s，新宿主路由即生效；
-  重组合瞬间旧实例已停、新实例未挂好，会有几秒 401，别急着判定「插件加载失败」。改完记得把探针注释还原。
-- **`agent/pre-step` waterfall 可以当「暂停/续跑」闸门，但必须按会话 + 按回合判定**（轮次 58 高峰暂停）：
-  listener 不调 `next()` 即挂起整步，resolve 后再 `next()`；`payload.agent.id` 就是 SessionId，用它匹配
-  「已开启该会话」的 opt-in 集合。回合归属靠 `payload.messages` 的 `source.kind === 'user'` 判定（schedule /
-  goal / subagent relay 都不是 `user`，天然不挂自动任务）；首步之后的 step 可能没有 messages，必须按
-  `(sessionId, turn)` 记住首步判定，否则挂起的回合会在第二步「漏」过去。abort 时必须 resolve 后继续走
-  `next()`（否则用户点停止会卡死 turn）；手动放行后也要记住该回合，不然「立即继续」只走一步又停住。
-- **DSH 的 composer dock 在「等待用户回答」时整个被替换掉**（轮次 58 验证时踩到）：会话里有待回答问题
-  （`提问 · 等待回答` 卡片）时 composer 及其 dock 不渲染，挂在上面的 pill 自然不可见；Playwright 验证这类
-  dock 组件要先 `跳过/提交` 掉待回答问题、或换一个空闲会话，否则会一直等一个「存在但 0×0」的可见性超时。
