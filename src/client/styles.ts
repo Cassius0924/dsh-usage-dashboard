@@ -233,7 +233,11 @@ export const css = `
 .dq-pricing-table{border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;min-width:100%}
 .dq-pricing-table th{text-align:left;font-weight:500;color:var(--dsw-alias-label-secondary,#59636e);padding:4px 12px 4px 0;white-space:nowrap;border-bottom:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.08))}
 .dq-pricing-table td{padding:4px 12px 4px 0;color:var(--dsw-alias-label-primary,#1f2328);white-space:nowrap;vertical-align:top}
-.dq-pricing-table th:nth-child(n+3),.dq-pricing-table td:nth-child(n+3){text-align:right}
+/* Align by counting from the end: a peak row starts with the rowSpan'd model
+   cell (5 cells) while its off-peak pair starts at 时段 (4 cells), so
+   nth-child(n+3) left the off-peak cache-hit price stranded under 时段. The
+   last three cells are the three price columns in both row shapes. */
+.dq-pricing-table th:nth-last-child(-n+3),.dq-pricing-table td:nth-last-child(-n+3){text-align:right}
 .dq-pricing-table th:last-child,.dq-pricing-table td:last-child{padding-right:0}
 .dq-pricing-table tbody td:first-child{font-weight:500}
 .dq-pricing-table tbody tr+tr td{border-top:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.05))}
