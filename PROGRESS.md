@@ -1636,6 +1636,15 @@
   证据：接口实测 6 个会话、标题 6/6 全部解析成功、按费用降序、Top-6 之和 = totals.cost（100%）；
   界面显示最贵会话「写一个查看DeepSeek额度的dsh插件 ¥11.38 · 占 77.8%」；控制台 0 错误。
 
+## 发布（2026-10-23）
+
+- 已发布 `@cassius0924/dsh-usage-dashboard@0.8.3`（GitHub Release → Actions → npm Trusted Publishing OIDC）。
+- 证据：https://github.com/Cassius0924/dsh-usage-dashboard/releases/tag/v0.8.3 ；Actions run `39911637720`
+  全绿（Test 118/118、Build、Typecheck、tag 与 package.json 版本校验、Publish + provenance）；
+  registry `dist-tags.latest = 0.8.3`，tarball 为 `dsh-usage-dashboard-0.8.3.tgz`。
+- 备注：`v0.8.2` 当时只打了 tag、没有建 GitHub Release，npm 上从 0.8.1 直接跳到 0.8.3；0.8.3 的内容
+  同时包含轮次 58（会话级高峰暂停）与轮次 59（低余额「去充值 ↗」按钮）。
+
 ## 发布（2026-08-15）
 
 - 已发布 `@cassius0924/dsh-usage-dashboard@0.3.0`（unscoped 名被无关的包先占，改用作用域包）。
