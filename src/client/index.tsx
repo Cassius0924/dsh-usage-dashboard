@@ -9,6 +9,7 @@ import { ErrorBoundary } from './boundary.tsx'
 import type { ClientContext } from './context.ts'
 import { fetchBalance, fetchUsage } from './api.ts'
 import { BalanceDashboard } from './dashboard.tsx'
+import { BreakerPill } from './breaker-pill.tsx'
 import { LocaleProvider, type Translate } from './i18n.tsx'
 import { QUOTA_PANEL_ID, quotaTabIndexStore, sidebarEntryStore, viewOrderForIndex } from './layout-prefs.ts'
 import { en, NS, zh } from './locales.ts'
@@ -81,6 +82,18 @@ export function apply(ctx: ClientContext): void {
     ({ t: slotT, sessionId }: { t: Translate; sessionId?: string }) => (
       <LocaleProvider t={slotT}>
         <ErrorBoundary t={slotT} silent><SessionCostPill sessionId={sessionId} /></ErrorBoundary>
+      </LocaleProvider>
+    ),
+  ))
+
+  // Session-level breaker switch: same dock and skin as the cost pill, but it
+  // governs only this conversation's peak-time behaviour. The 额度 page lists
+  // what was switched on here.
+  ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register(
+    { name: 'conversation.composer.dock', id: 'peak-breaker', order: 3, locale: NS },
+    ({ t: slotT, sessionId }: { t: Translate; sessionId?: string }) => (
+      <LocaleProvider t={slotT}>
+        <ErrorBoundary t={slotT} silent><BreakerPill sessionId={sessionId} /></ErrorBoundary>
       </LocaleProvider>
     ),
   ))

@@ -1,7 +1,7 @@
 {
   "name": "@cassius0924/dsh-usage-dashboard",
   "version": "0.8.3",
-  "description": "DeepSeek 额度与用量仪表盘 —— DSH (DeepSeek Harness) Web 插件：余额还能撑几天、今日/本月花了多少、哪个模型和哪个会话最贵、图片/多模态用量、缓存省了多少、高峰挪到闲时能省多少",
+  "description": "DeepSeek 额度与用量仪表盘 —— DSH (DeepSeek Harness) Web 插件：余额还能撑几天、今日/本月花了多少、哪个模型和哪个会话最贵、图片/多模态用量、缓存省了多少、高峰挪到闲时能省多少，以及按会话开启的高峰暂停（18:00 继续）",
   "keywords": [
     "deepseek",
     "dsh",
