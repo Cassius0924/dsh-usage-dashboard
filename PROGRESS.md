@@ -112,6 +112,7 @@
     最贵会话 24.4%、前 6 个约 65%）。
   - 顺手修 `.dq-pricing-table` 数值列右对齐：模型中列 `rowSpan=2` 让高峰行 5 格、闲时行 4 格，
     原 `nth-child(n+3)` 把闲时行的缓存命中价漏在「时段」列下；改 `nth-last-child(-n+3)`（DESIGN_NOTES 已记）。
+  - hero 首图后来按用户提供的 CleanShot 截图（2206×1900，只保留会话内容列）替换，不再使用 1440×1000 的整页截图。
   - Verify：build / typecheck exit 0、118/118 单测；线上 3080 逐张核对（价目表两行三个价格列右边缘一致，
     见 docs/overview.png）；README 的 width 属性与新图宽高匹配（hero 2880×2000、全宽卡 1626 宽、半宽卡 790、
     三态拼图 339×222、悬浮窗 624×426）；截图脚本运行期间宿主 breaker 设置未被改动（mock 只在浏览器侧）。
