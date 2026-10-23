@@ -16,6 +16,8 @@
 字重/字号层级收敛、小字对比度、数字与货币标点、表格对齐与长文行高，详见轮次 54 记录。
 轮次 59 按用户要求补上低余额的一键出口：余额低于 ¥10 或低于预警线时，「预计可用」右侧出现实心
 「去充值 ↗」按钮，新标签页打开 DeepSeek 平台充值页（详见轮次 59 记录与 DESIGN_NOTES「交互约定」）。
+轮次 60 按用户要求把 README 全部截图按改版后的 UI 重拍（新增热力图、图片用量两张图），并顺手修掉
+计价表闲时行的数值错位（详见轮次 60 记录）。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -96,6 +98,24 @@
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 60）`docs(readme)`: README 截图全部按当前 UI 重拍（用户：「把README的图片改一下，UI有改版，得重新截了」）。
+  - 重拍 16 张：hero / widget / widget-low / balance / overview / peak / cache / models / sessions / charts /
+    heatmap / vision / alert / top-up / breaker / breaker-states。数据状态：hero、widget、balance 用正常余额
+    （拦截余额接口 mock 成 88.00，避免 README 首屏就是告警条），其余用真实低余额（4.76，预警线 10）与真实用量；
+    breaker 卡与三态 pill 用构造的宿主投影（2 个会话、1 个挂起、18:00 继续），渲染的仍是真实组件。
+  - 截图口径：charts 只截「用量趋势」卡的统计 + 逐天图，vision 只截该卡的图片区段（截图时临时隐藏其他子块，
+    不改进产品代码）；models 切到近 90 天以展示 5 个模型的配色与排序；peak/cache 现在是并排半宽卡，README
+    width 相应从 860 改 400。
+  - 新增 `docs/heatmap.png`、`docs/vision.png`（热力图早已单卡、图片用量已并入趋势卡，README 之前没有对应图）；
+    去掉「余额预警」里重复的 alert 图；缓存实付/节省、会话占比等文案对齐新截图数字（¥50.61 / ¥1,220.87、
+    最贵会话 24.4%、前 6 个约 65%）。
+  - 顺手修 `.dq-pricing-table` 数值列右对齐：模型中列 `rowSpan=2` 让高峰行 5 格、闲时行 4 格，
+    原 `nth-child(n+3)` 把闲时行的缓存命中价漏在「时段」列下；改 `nth-last-child(-n+3)`（DESIGN_NOTES 已记）。
+  - Verify：build / typecheck exit 0、118/118 单测；线上 3080 逐张核对（价目表两行三个价格列右边缘一致，
+    见 docs/overview.png）；README 的 width 属性与新图宽高匹配（hero 2880×2000、全宽卡 1626 宽、半宽卡 790、
+    三态拼图 339×222、悬浮窗 624×426）；截图脚本运行期间宿主 breaker 设置未被改动（mock 只在浏览器侧）。
+
 
 - （轮次 59）`feat(balance)`: 低余额时「预计可用」右侧的「去充值 ↗」按钮（用户：「额度低（低于10元、
   低于设置的警戒值）的时候自动在『预计可用』右侧加一个较为显眼的『去充值』按钮，并且带一个指向右上角的
