@@ -226,6 +226,15 @@
 - i18n 使用 DSH 原生 `locale` 服务与全局「Settings → Language」设置，不在插件里重复造语言开关；
   slot 注册声明 namespace，tab / overlay 从宿主接收响应式 `t`，内部组件统一从翻译上下文取词。
   新增用户可见文案必须进入中英文同键词典，词典测试校验键、占位符与英文残留。
+- **余额低到需要充值时的入口分两层，可配置预警线只管「解释」，一键出口固定在「预计可用」右侧**（轮次 59）：
+  顶部警示条负责说明为什么告警、还能撑几天（原有文字链保留）；真正显眼的入口是「预计可用」数值右侧的
+  实心「去充值 ↗」链接。触发条件在 `src/client/top-up.ts` 的 `needsTopUp(balance, warningLine)`：
+  余额低于固定下限 10（账户币种）**或** 低于用户预警线，两者取并集——预警线填 0 只是用户不想要琥珀色
+  警示条，不代表余额 3 元时不需要出口；把预警线调到 100 时入口也跟着提前出现。视觉上用宿主
+  `--dsw-alias-button-primary-fill` / `--dsw-alias-button-primary-hover` / `--dsw-alias-label-primary-foreground`
+  （DSH 自己填充按钮的同一对 token，深浅主题都能自洽），保证全页只有一个填充色行动按钮而不是再多一个
+  「筛选 chip」；`↗`（10px）表示会离开应用，链接本身用 `target="_blank" rel="noreferrer"` 且键盘可达。
+  按钮高 26px、和 18px 数值同处一行，hero 不因它增高。
 
 ## 导航与入口（轮次 56）
 

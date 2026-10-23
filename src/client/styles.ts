@@ -169,6 +169,17 @@ export const css = `
 .dq-remaining-breakdown{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:20;flex-direction:column;gap:4px;padding:8px 10px;background:var(--dsw-alias-bg-overlay,#ffffff);border:1px solid var(--dsw-alias-border-l1,rgba(0,0,0,.12));border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);white-space:nowrap;font-size:12px;font-weight:500;line-height:1.5;color:var(--dsw-alias-label-primary,#1f2328)}
 .dq-remaining[open] .dq-remaining-breakdown{display:flex}
 .dq-remaining-granted{color:var(--dsw-alias-label-secondary,#59636e);font-weight:400;font-size:12px}
+/* Low-balance top-up shortcut beside the runway value. It is an <a>, not a
+   <button>, because it leaves the app; the ↗ glyph states that. Colours come
+   from the host's primary-button tokens (the same pair DSH's own filled
+   buttons use) so the page keeps exactly one filled call to action instead of
+   reading as another filter chip. Height stays on the runway text line so the
+   hero row does not grow. */
+.dq-runway-line{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px}
+.dq-topup{display:inline-flex;align-items:center;gap:2px;height:26px;padding:0 10px;border-radius:var(--dsw-radius-sm,8px);background:var(--dsw-alias-button-primary-fill,#0969da);color:var(--dsw-alias-label-primary-foreground,#fff);font-size:12px;font-weight:600;line-height:1;text-decoration:none;white-space:nowrap;transition:background .15s ease}
+.dq-topup:hover{background:var(--dsw-alias-button-primary-hover,#0757ba)}
+.dq-topup:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#0969da);outline-offset:2px}
+.dq-topup-arrow{font-size:10px;line-height:1;transform:translateY(-1px)}
 /* narrow screens: .dq-balance-grid wraps its 3 stats onto separate lines, so the absolutely-positioned
    .dq-remaining-breakdown/.dq-runway-detail popovers can float down over whichever stat now sits in the
    next row (e.g. "余额明细" open covering "预计可用"'s clickable summary) — force each stat onto its own

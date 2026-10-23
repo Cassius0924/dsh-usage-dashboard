@@ -14,6 +14,8 @@
 评分，轮次 40-42 待重新评估）。当前无 P0/P1/P2 排版候选待办，继续按优先级扫描新一轮。
 轮次 54 按用户新要求（「给这个插件文字UI排版美化一下」）做了一轮全站文字排版统一提升：字体跟随宿主、
 字重/字号层级收敛、小字对比度、数字与货币标点、表格对齐与长文行高，详见轮次 54 记录。
+轮次 59 按用户要求补上低余额的一键出口：余额低于 ¥10 或低于预警线时，「预计可用」右侧出现实心
+「去充值 ↗」按钮，新标签页打开 DeepSeek 平台充值页（详见轮次 59 记录与 DESIGN_NOTES「交互约定」）。
 
 ## 假设（用户未指定方向时的合理假设）
 
@@ -94,6 +96,26 @@
   修后 `overlaps=false`、`reachable`。同轮更新 README 功能清单与 screenshot.png。
 
 ## 已完成（续）
+
+- （轮次 59）`feat(balance)`: 低余额时「预计可用」右侧的「去充值 ↗」按钮（用户：「额度低（低于10元、
+  低于设置的警戒值）的时候自动在『预计可用』右侧加一个较为显眼的『去充值』按钮，并且带一个指向右上角的
+  箭头，代表要跳到外部web：https://platform.deepseek.com/top_up」）。
+  - 触发：新增 `src/client/top-up.ts` 的纯函数 `needsTopUp(balance, warningLine)`——余额低于固定下限 10
+    （账户币种）**或** 低于用户预警线（预警线 0 只关闭这一半）；余额不可读（NaN/±Infinity）时永不出现。
+    预警线原有的 `balanceLow` 判定不动，警示条行为不变。
+  - 外观：「预计可用」数值行内的右侧，实心按钮 + `↗`（10px，上移 1px）；颜色取宿主
+    `--dsw-alias-button-primary-fill` / `--dsw-alias-button-primary-hover` / `--dsw-alias-label-primary-foreground`
+    （与 DSH 自身填充按钮同一对 token），12px/600、高 26px、圆角 8px，与 18px 数值同行，hero 高度不增加；
+    链接 `target="_blank" rel="noreferrer"`，title 说明去向与「新标签页打开」，`:focus-visible` 有焦点环。
+  - 文案：按钮文字复用 `alert.topUp`；新增中英同键 `balance.topUpTitle`。
+  - 保留警示条里原有的「去充值」文字链：它只在预警线触发时出现并解释原因，新按钮在预警线关闭时仍按 10 元
+    下限出现，两者职责不同（见 DESIGN_NOTES「交互约定」）。
+  - Docs：README「余额预警」补截图与说明，新增 `docs/top-up.png`（真实低余额状态：警示条 + hero + 按钮）。
+  - Verify：118/118 单测（新增 5 个 top-up 用例：10 元严格小于、预警线 0/3/47/100、NaN/±Infinity），
+    `pnpm run build` / `pnpm run typecheck` exit 0；Playwright 真实 GUI（拦截余额接口改数字）4 组矩阵：
+    88/默认线 10 → 按钮 0 / 条 0、88/线 100 → 按钮 1 / 条 1、4.76/线 0 → 按钮 1 / 条 0、88/线 0 → 都 0；
+    1440/900/620/390 均无页面横向溢出，hero 高 57px、按钮 68×26 与数值同行；控制台 0 错误
+    （仅宿主既有 `sessions.retain: unknown session`）；`git status` 仅预期文件。
 
 - （轮次 58）`feat(breaker)`: 会话级高峰暂停——对话输入框旁开关，高峰暂停、18:00 继续（用户：「插件可以搞个熔断
   功能，到了高峰期暂停，然后到了 18 点后继续任务」，随后收敛为「这个功能不应该想全局的，也不用对自动化任务开放，

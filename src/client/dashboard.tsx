@@ -20,6 +20,7 @@ import { quotaTabIndexStore, sidebarEntryStore, type SidebarEntryPlacement } fro
 import { CHART_METRICS, chartMetricName, chartMetricValue, type ChartMetric } from './metric.ts'
 import type { BalanceData, ModelUsage, PeakSplit, PeriodUsage, PricingInfo, SessionCost, SessionUsageData, UsageCoverage, UsageData, UsageWindowDays, VisionDayPoint, VisionSession, VisionStats } from '../contract.ts'
 import { chartMetricStore, lowBalanceStore, monthlyBudgetStore, quotaViewActiveStore, usageWindowStore, widgetTabIdsStore, widgetVisibleStore } from './store.ts'
+import { TOP_UP_URL, needsTopUp } from './top-up.ts'
 import type { ConversationViewTab, ConversationViewsSource } from './views.ts'
 
 /** `<package name> v<version>`, injected by build.mjs from package.json so the
@@ -1491,6 +1492,9 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
   const balanceValue = primary !== null ? Number(primary.total) : Number.NaN
   // 0 disables the warning; an unreadable balance never triggers it.
   const balanceLow = lowBalance > 0 && Number.isFinite(balanceValue) && balanceValue < lowBalance
+  // The top-up shortcut sits outside the configurable warning: either a balance
+  // under the fixed floor or one under the user's line is "time to top up".
+  const topUpPrompt = needsTopUp(balanceValue, lowBalance)
   const daysLeft = avgDailyCost > 0 && Number.isFinite(balanceValue) ? balanceValue / avgDailyCost : null
   const daysLeftText = daysLeft === null
     ? '—'
@@ -1687,7 +1691,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
           <div>
             <strong>{t('alert.lowTitle', { balance: fmt(balanceValue), currency: primary?.currency, threshold: fmt(lowBalance) })}</strong>
             {daysLeft !== null && t('alert.runway', { days: daysLeftText })}{t('common.period')}
-            <a className="dq-alert-link" href="https://platform.deepseek.com/top_up" target="_blank" rel="noreferrer">{t('alert.topUp')}</a>
+            <a className="dq-alert-link" href={TOP_UP_URL} target="_blank" rel="noreferrer">{t('alert.topUp')}</a>
           </div>
         </div>
       )}
@@ -1727,28 +1731,36 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
             </div>
             <div className="dq-stat">
               <div className="dq-stat-label">{t('balance.runway')}</div>
-              <details
-                className={`dq-stat-value dq-runway${daysLeft !== null && daysLeft < 3 ? ' dq-stat-value--bad' : ''}`}
-                open={runwayHovering || runwayManuallyOpened}
-                onPointerEnter={() => setRunwayHovering(true)}
-                onPointerLeave={() => setRunwayHovering(false)}
-              >
-                <summary
-                  title={t('balance.runwayBreakdownTitle')}
-                  onClick={e => {
-                    // Own the toggle fully instead of the native default action: a controlled
-                    // <details> can be forced open by hover, and a plain native toggle here
-                    // would fight that (e.g. it flips to "closed" while the mouse is still
-                    // hovering). Preventing default and flipping our own "manually opened"
-                    // state keeps hover-preview and click/keyboard/tap-to-pin independent.
-                    e.preventDefault()
-                    setRunwayManuallyOpened(v => !v)
-                  }}
+              <div className="dq-runway-line">
+                <details
+                  className={`dq-stat-value dq-runway${daysLeft !== null && daysLeft < 3 ? ' dq-stat-value--bad' : ''}`}
+                  open={runwayHovering || runwayManuallyOpened}
+                  onPointerEnter={() => setRunwayHovering(true)}
+                  onPointerLeave={() => setRunwayHovering(false)}
                 >
-                  {daysLeftText}
-                </summary>
-                <div className="dq-runway-detail">{runwayTitle}</div>
-              </details>
+                  <summary
+                    title={t('balance.runwayBreakdownTitle')}
+                    onClick={e => {
+                      // Own the toggle fully instead of the native default action: a controlled
+                      // <details> can be forced open by hover, and a plain native toggle here
+                      // would fight that (e.g. it flips to "closed" while the mouse is still
+                      // hovering). Preventing default and flipping our own "manually opened"
+                      // state keeps hover-preview and click/keyboard/tap-to-pin independent.
+                      e.preventDefault()
+                      setRunwayManuallyOpened(v => !v)
+                    }}
+                  >
+                    {daysLeftText}
+                  </summary>
+                  <div className="dq-runway-detail">{runwayTitle}</div>
+                </details>
+                {topUpPrompt && (
+                  <a className="dq-topup" href={TOP_UP_URL} target="_blank" rel="noreferrer" title={t('balance.topUpTitle')}>
+                    {t('alert.topUp')}
+                    <span className="dq-topup-arrow" aria-hidden="true">↗</span>
+                  </a>
+                )}
+              </div>
             </div>
             {/* 「可用」是常态，不占 hero 位；只有账户不可用时才出现，且用错误色。 */}
             {balance?.isAvailable === false && (
