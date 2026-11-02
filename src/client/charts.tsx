@@ -140,6 +140,7 @@ export const MODEL_COLORS = ['#4176e6', '#2da44e', '#e16f24', '#8250df', '#bf870
 
 export function Bars(props: { data: BarDatum[]; height?: number; labelEvery?: number; minWidth?: number }): ReactElement {
   const { data, height = 120, labelEvery = 1, minWidth } = props
+  const { locale } = useI18n()
   const { wrapRef, tip, pinned, show, showFocused, hide, onPointStart, onPointEnd } = useChartTip()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const initialFocus = lastPopulatedIndex(data.map(datum => datum.value))
@@ -153,32 +154,38 @@ export function Bars(props: { data: BarDatum[]; height?: number; labelEvery?: nu
   const scale = max > 0 ? max : 1
   return (
     <div className="dq-chart-wrap" ref={wrapRef} onPointerLeave={hide}>
-      <div className="dq-bars-scroll" ref={scrollRef}>
-        <div className="dq-bars" style={{ height: `${height + 18}px`, minWidth: minWidth === undefined ? undefined : `${minWidth}px` }}>
-          {data.map((datum, i) => {
-            const h = Math.max(1, Math.round((datum.value / scale) * height))
-            const text = datum.title ?? `${datum.label}: ${datum.value.toLocaleString()}`
-            return (
-              <div
-                key={i}
-                className={`dq-bar-col${pinned === i ? ' dq-bar-col--pinned' : ''}`}
-                role="img"
-                aria-label={text}
-                aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
-                tabIndex={i === roving.active ? 0 : -1}
-                ref={element => { roving.refs.current[i] = element }}
-                onPointerMove={e => show(e, text)}
-                onPointerDown={onPointStart}
-                onPointerUp={e => onPointEnd(e, i, text)}
-                onFocus={e => showFocused(e, text)}
-                onBlur={hide}
-                onKeyDown={e => roving.onKeyDown(e, i)}
-              >
-                <div className="dq-bar" style={{ height: `${h}px` }} />
-                <div className="dq-bar-label" style={{ visibility: i % labelEvery === 0 ? 'visible' : 'hidden' }}>{datum.label}</div>
-              </div>
-            )
-          })}
+      <div className="dq-plot">
+        <div className="dq-yaxis" style={{ height: `${height}px` }} aria-hidden="true">
+          <span>{max > 0 ? fmtCompact(max, locale) : ''}</span>
+          <span>0</span>
+        </div>
+        <div className="dq-bars-scroll" ref={scrollRef}>
+          <div className="dq-bars" style={{ height: `${height + 18}px`, minWidth: minWidth === undefined ? undefined : `${minWidth}px` }}>
+            {data.map((datum, i) => {
+              const h = Math.max(1, Math.round((datum.value / scale) * height))
+              const text = datum.title ?? `${datum.label}: ${datum.value.toLocaleString()}`
+              return (
+                <div
+                  key={i}
+                  className={`dq-bar-col${pinned === i ? ' dq-bar-col--pinned' : ''}`}
+                  role="img"
+                  aria-label={text}
+                  aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
+                  tabIndex={i === roving.active ? 0 : -1}
+                  ref={element => { roving.refs.current[i] = element }}
+                  onPointerMove={e => show(e, text)}
+                  onPointerDown={onPointStart}
+                  onPointerUp={e => onPointEnd(e, i, text)}
+                  onFocus={e => showFocused(e, text)}
+                  onBlur={hide}
+                  onKeyDown={e => roving.onKeyDown(e, i)}
+                >
+                  <div className="dq-bar" style={{ height: `${h}px` }} />
+                  <div className="dq-bar-label" style={{ visibility: i % labelEvery === 0 ? 'visible' : 'hidden' }}>{datum.label}</div>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
       <ChartTip tip={tip} />
@@ -214,6 +221,7 @@ export function GroupedBars(props: {
   minWidth?: number
 }): ReactElement {
   const { series, height = 120, labelEvery = 1, minWidth } = props
+  const { locale } = useI18n()
   const { wrapRef, tip, pinned, show, showFocused, hide, onPointStart, onPointEnd } = useChartTip()
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const count = series.length > 0 ? series[0].bars.length : 0
@@ -223,47 +231,55 @@ export function GroupedBars(props: {
     const scroll = scrollRef.current
     if (scroll !== null && minWidth !== undefined) scroll.scrollLeft = scroll.scrollWidth
   }, [count, minWidth])
-  const scale = maxOrOne(stackedTotals(series, count))
+  const totals = stackedTotals(series, count)
+  const scale = maxOrOne(totals)
+  const axisMax = totals.reduce((m, v) => Math.max(m, v), 0)
   return (
     <div className="dq-chart-wrap" ref={wrapRef} onPointerLeave={hide}>
-      <div className="dq-bars-scroll" ref={scrollRef}>
-        <div className="dq-bars" style={{ height: `${height + 18}px`, minWidth: minWidth === undefined ? undefined : `${minWidth}px` }}>
-          {Array.from({ length: count }, (_, i) => (
-            <div
-              key={i}
-              className="dq-bar-col"
-            >
-              <div className="dq-bar-group">
-                {series.map((s, seriesIndex) => {
-                  const datum = s.bars[i]
-                  const h = Math.max(1, Math.round((datum.value / scale) * height))
-                  const text = datum.title ?? `${s.key}: ${datum.value.toLocaleString()}`
-                  const pointIndex = i * series.length + seriesIndex
-                  return (
-                    <div
-                      key={s.key}
-                      className={`dq-bar${pinned === pointIndex ? ' dq-bar--pinned' : ''}`}
-                      style={{ height: `${h}px`, background: s.color }}
-                      role="img"
-                      aria-label={text}
-                      aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
-                      tabIndex={pointIndex === roving.active ? 0 : -1}
-                      ref={element => { roving.refs.current[pointIndex] = element }}
-                      onPointerMove={e => show(e, text)}
-                      onPointerDown={onPointStart}
-                      onPointerUp={e => onPointEnd(e, pointIndex, text)}
-                      onFocus={e => showFocused(e, text)}
-                      onBlur={hide}
-                      onKeyDown={e => roving.onKeyDown(e, pointIndex)}
-                    />
-                  )
-                })}
+      <div className="dq-plot">
+        <div className="dq-yaxis" style={{ height: `${height}px` }} aria-hidden="true">
+          <span>{axisMax > 0 ? fmtCompact(axisMax, locale) : ''}</span>
+          <span>0</span>
+        </div>
+        <div className="dq-bars-scroll" ref={scrollRef}>
+          <div className="dq-bars" style={{ height: `${height + 18}px`, minWidth: minWidth === undefined ? undefined : `${minWidth}px` }}>
+            {Array.from({ length: count }, (_, i) => (
+              <div
+                key={i}
+                className="dq-bar-col"
+              >
+                <div className="dq-bar-group">
+                  {series.map((s, seriesIndex) => {
+                    const datum = s.bars[i]
+                    const h = Math.max(1, Math.round((datum.value / scale) * height))
+                    const text = datum.title ?? `${s.key}: ${datum.value.toLocaleString()}`
+                    const pointIndex = i * series.length + seriesIndex
+                    return (
+                      <div
+                        key={s.key}
+                        className={`dq-bar${pinned === pointIndex ? ' dq-bar--pinned' : ''}`}
+                        style={{ height: `${h}px`, background: s.color }}
+                        role="img"
+                        aria-label={text}
+                        aria-keyshortcuts="ArrowLeft ArrowRight ArrowUp ArrowDown Home End"
+                        tabIndex={pointIndex === roving.active ? 0 : -1}
+                        ref={element => { roving.refs.current[pointIndex] = element }}
+                        onPointerMove={e => show(e, text)}
+                        onPointerDown={onPointStart}
+                        onPointerUp={e => onPointEnd(e, pointIndex, text)}
+                        onFocus={e => showFocused(e, text)}
+                        onBlur={hide}
+                        onKeyDown={e => roving.onKeyDown(e, pointIndex)}
+                      />
+                    )
+                  })}
+                </div>
+                <div className="dq-bar-label" style={{ visibility: i % labelEvery === 0 ? 'visible' : 'hidden' }}>
+                  {series[0].bars[i].label}
+                </div>
               </div>
-              <div className="dq-bar-label" style={{ visibility: i % labelEvery === 0 ? 'visible' : 'hidden' }}>
-                {series[0].bars[i].label}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
       <ChartTip tip={tip} />

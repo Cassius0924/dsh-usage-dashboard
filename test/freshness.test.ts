@@ -20,7 +20,7 @@ test('sync states distinguish live, cached, fallback, and failed data', () => {
   const at = NOW - 3 * 60_000
   assert.equal(syncStatusText('syncing', at, NOW), '同步中 · 当前数据更新于 3 分钟前')
   assert.equal(syncStatusText('fresh', at, NOW), '已同步 · 更新于 3 分钟前')
-  assert.equal(syncStatusText('cached', at, NOW), '缓存数据 · 更新于 3 分钟前')
+  assert.equal(syncStatusText('cached', at, NOW), '本地缓存 · 更新于 3 分钟前')
   assert.equal(syncStatusText('fallback', at, NOW), '缓存回退 · 更新于 3 分钟前')
   assert.equal(syncStatusText('error', null, NOW), '同步失败 · 暂无可显示的用量')
 })

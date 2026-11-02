@@ -110,9 +110,13 @@ function Delta(props: { current: number; previous: number; label: string }): Rea
   const title = `${label} ¥${fmt(previous)}`
   if (percent === 0) return <span className="dq-delta dq-delta--flat" title={title}>{t('delta.flat')}</span>
   const up = percent > 0
+  // A tiny previous baseline makes the ratio explode (e.g. ↑9176%), which reads
+  // like a bug rather than a fact. Cap the displayed magnitude; the title keeps
+  // the exact baseline the number was computed from.
+  const magnitude = Math.abs(percent) >= 1000 ? '999+' : String(Math.abs(percent))
   return (
     <span className={`dq-delta ${up ? 'dq-delta--up' : 'dq-delta--down'}`} title={title}>
-      {up ? '↑' : '↓'}{Math.abs(percent)}% <span className="dq-delta-label">{label}</span>
+      {up ? '↑' : '↓'}{magnitude}% <span className="dq-delta-label">{label}</span>
     </span>
   )
 }
@@ -297,6 +301,166 @@ function CardTitle(props: { children: ReactNode; caption?: ReactNode; srOnly?: b
       {props.caption !== undefined && <span className="dq-card-caption">{props.caption}</span>}
     </h2>
   )
+}
+
+/** In-column section rail: one dot per top-level card, scroll-spy synced, sitting
+ *  in the centred column's left gutter. Purely additive navigation — it never
+ *  reorders or restyles the cards — and hides when there is no gutter to sit in,
+ *  so it cannot compete with the host's own sidebar. */
+function SectionNav(props: {
+  rootRef: { readonly current: HTMLDivElement | null }
+  label: string
+  sections: Array<{ key: string; label: string }>
+}): ReactElement | null {
+  const { rootRef, label, sections } = props
+  const [targets, setTargets] = useState<Array<{ el: HTMLElement; label: string }>>([])
+  const [active, setActive] = useState(0)
+  const [pos, setPos] = useState({ right: 0, visible: false })
+  const signature = sections.map(section => `${section.key}:${section.label}`).join('|')
+
+  // Pair the label list with the rendered top-level cards in DOM order. The only
+  // conditional card is the current-session one, reflected in both lists above.
+  useEffect(() => {
+    const root = rootRef.current
+    if (root === null) return
+    const nodes = Array.from(root.querySelectorAll<HTMLElement>(':scope > .dq-card, :scope > .dq-card-pair'))
+    setTargets(nodes.map((el, i) => ({ el, label: sections[i]?.label ?? '' })).filter(item => item.label !== ''))
+    // `signature` captures the label list; `sections` itself changes identity each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rootRef, signature])
+
+  // Keep the rail in the gutter; hide it when the column is too close to an edge.
+  useEffect(() => {
+    const root = rootRef.current
+    if (root === null) return
+    const scrollport = root.closest('[data-conversation-scroll]') as HTMLElement | null
+    const measure = (): void => {
+      const rect = root.getBoundingClientRect()
+      setPos({ right: window.innerWidth - rect.left + 12, visible: window.innerWidth >= 1200 && rect.left >= 170 })
+    }
+    measure()
+    const scroller: HTMLElement | Window = scrollport ?? window
+    scroller.addEventListener('scroll', measure, { passive: true })
+    window.addEventListener('resize', measure)
+    return () => {
+      scroller.removeEventListener('scroll', measure)
+      window.removeEventListener('resize', measure)
+    }
+  }, [rootRef])
+
+  // Scroll-spy: the last card whose top crossed the top band is "current".
+  useEffect(() => {
+    if (targets.length === 0) return
+    const root = rootRef.current
+    if (root === null) return
+    const scrollport = root.closest('[data-conversation-scroll]') as HTMLElement | null
+    const onScroll = (): void => {
+      const base = scrollport === null ? 0 : scrollport.getBoundingClientRect().top
+      let current = 0
+      targets.forEach((target, i) => {
+        if (target.el.getBoundingClientRect().top - base <= 120) current = i
+      })
+      setActive(current)
+    }
+    onScroll()
+    const scroller: HTMLElement | Window = scrollport ?? window
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => scroller.removeEventListener('scroll', onScroll)
+  }, [targets, rootRef])
+
+  if (targets.length < 3) return null
+
+  const go = (el: HTMLElement): void => {
+    const root = rootRef.current
+    const scrollport = root?.closest('[data-conversation-scroll]') as HTMLElement | null
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const behavior: ScrollBehavior = reduce ? 'auto' : 'smooth'
+    if (scrollport !== null) {
+      const base = scrollport.getBoundingClientRect().top
+      scrollport.scrollTo({ top: scrollport.scrollTop + el.getBoundingClientRect().top - base - 12, behavior })
+    } else {
+      window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 12, behavior })
+    }
+  }
+
+  return (
+    <nav className={`dq-sectionnav${pos.visible ? '' : ' dq-sectionnav--hidden'}`} style={{ right: `${pos.right}px` }} aria-label={label}>
+      <ol>
+        {targets.map((target, i) => (
+          <li key={`${target.label}-${String(i)}`}>
+            <button
+              type="button"
+              className={`dq-sectionnav-dot${i === active ? ' dq-sectionnav-dot--active' : ''}`}
+              aria-current={i === active ? 'true' : undefined}
+              onClick={() => go(target.el)}
+            >
+              <span className="dq-sectionnav-label">{target.label}</span>
+              <span className="dq-sectionnav-pip" aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}
+
+/** Height reveal + retract for content that stays mounted but toggles visibility
+ *  (the settings panel). Styles are applied in a layout effect so the panel is
+ *  already collapsed to height 0 BEFORE the first paint — no full-height flash,
+ *  then it eases 0→measured (easeOutExpo). Closing animates back to 0 (ease-in)
+ *  before display:none. Reduced motion snaps straight to the final state. */
+function Collapsible(props: { open: boolean; children: ReactNode }): ReactElement {
+  const ref = useRef<HTMLDivElement | null>(null)
+  const animationRef = useRef<Animation | null>(null)
+  const open = props.open
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (el === null) return
+    animationRef.current?.cancel()
+    animationRef.current = null
+    const reduce = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    const canAnimate = typeof el.animate === 'function' && !reduce
+    const reset = (): void => { el.style.height = ''; el.style.overflow = ''; el.style.opacity = '' }
+    if (open) {
+      if (!canAnimate) {
+        el.style.display = ''
+        reset()
+        return
+      }
+      // Collapse synchronously before paint so measuring the natural height never
+      // shows the full panel for a frame.
+      el.style.display = 'block'
+      el.style.overflow = 'hidden'
+      el.style.height = '0px'
+      el.style.opacity = '0'
+      const height = el.scrollHeight
+      const animation = el.animate(
+        [{ height: '0px', opacity: 0 }, { height: `${height}px`, opacity: 1 }],
+        { duration: 300, easing: 'cubic-bezier(0.16, 1, 0.3, 1)' },
+      )
+      animationRef.current = animation
+      animation.addEventListener('finish', reset)
+      return () => animation.cancel()
+    }
+    if (el.style.display === 'none') return
+    if (!canAnimate) {
+      reset()
+      el.style.display = 'none'
+      return
+    }
+    const height = el.getBoundingClientRect().height || el.scrollHeight
+    el.style.overflow = 'hidden'
+    el.style.height = `${height}px`
+    const animation = el.animate(
+      [{ height: `${height}px`, opacity: 1 }, { height: '0px', opacity: 0 }],
+      { duration: 220, easing: 'cubic-bezier(0.4, 0, 1, 1)' },
+    )
+    animationRef.current = animation
+    animation.addEventListener('finish', () => { reset(); el.style.display = 'none' })
+    return () => animation.cancel()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+  return <div ref={ref}>{props.children}</div>
 }
 
 function Stat(props: { label: string; children: ReactNode }): ReactElement {
@@ -527,6 +691,7 @@ function CacheCard(props: { totals: UsageData['totals'] }): ReactElement {
         <span><span className="dq-legend-swatch dq-legend-swatch--hit" />{t('cache.hitLegend', { tokens: fmtCompact(totals.cache, locale) })}</span>
         <span><span className="dq-legend-swatch dq-legend-swatch--miss" />{t('cache.missLegend', { tokens: fmtCompact(totals.input, locale) })}</span>
       </div>
+      <p className="dq-cache-foot">{t('cache.basis', { cost: fmt(totals.cost), miss: fmt(wouldHaveCost) })}</p>
     </div>
   )
 }
@@ -610,12 +775,50 @@ function VisionCard(props: VisionSectionProps): ReactElement {
 function PeakCard(props: { split: PeakSplit; pricing: PricingInfo }): ReactElement {
   const { t, locale } = useI18n()
   const { split, pricing } = props
+  // Live Beijing clock so "now" stays honest while the tab is open; one tick a
+  // minute is plenty for an hour-resolution strip.
+  const [nowMs, setNowMs] = useState(() => Date.now())
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 60_000)
+    return () => clearInterval(id)
+  }, [])
   const total = split.peak.total + split.offPeak.total
   if (total === 0) return <div className="dq-empty">{t('peak.empty')}</div>
   const peakShare = split.peak.total / total
   const shiftSaving = split.peakEraCost - split.offPeakEraCost
+
+  // DeepSeek peak windows are Beijing time and weekday-only in the current price
+  // era. Derive the schedule from the same strings the pricing note shows, so the
+  // clock cannot drift from the table.
+  const beijing = new Date(nowMs + 8 * 3_600_000)
+  const hour = beijing.getUTCHours()
+  const minute = beijing.getUTCMinutes()
+  const weekday = beijing.getUTCDay()
+  const weekend = weekday === 0 || weekday === 6
+  const windows = pricing.peakWindows
+    .map(w => w.match(/(\d{1,2}):\d{2}\D+(\d{1,2}):\d{2}/))
+    .filter((m): m is RegExpMatchArray => m !== null)
+    .map(m => [Number(m[1]), Number(m[2])] as const)
+  const isPeakNow = !weekend && windows.some(([from, to]) => hour >= from && hour < to)
+  const nowPercent = ((hour + minute / 60) / 24) * 100
+  const clockCells = Array.from({ length: 24 }, (_, h) => !weekend && windows.some(([from, to]) => h >= from && h < to))
+  const nowState = isPeakNow ? t('peak.nowPeak') : t('peak.nowOff')
   return (
     <div className="dq-peak">
+      <div className="dq-clock">
+        <div className="dq-clock-head">
+          <span className="dq-clock-title">{t('peak.clockTitle')}</span>
+          <span className={`dq-clock-status ${isPeakNow ? 'dq-clock-status--peak' : 'dq-clock-status--off'}`}>{nowState}</span>
+        </div>
+        <div className="dq-clock-track" role="img" aria-label={t('peak.clockAria', { state: nowState })}>
+          {clockCells.map((peak, h) => (
+            <span key={h} className={`dq-clock-cell${peak ? ' dq-clock-cell--peak' : ''}`} />
+          ))}
+          <span className="dq-clock-now" style={{ left: `${nowPercent}%` }} aria-hidden="true" />
+        </div>
+        <div className="dq-clock-scale" aria-hidden="true"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>
+        <p className="dq-clock-hint">{t('peak.clockHint')}</p>
+      </div>
       <div
         className="dq-peak-track"
         role="img"
@@ -634,12 +837,10 @@ function PeakCard(props: { split: PeakSplit; pricing: PricingInfo }): ReactEleme
       <div className="dq-peak-figures">
         <div className="dq-stat">
           <div className="dq-stat-label">{t('peak.shift')}</div>
-          <div className="dq-stat-value">
-            ¥{fmt(split.offPeakEraCost)}
-            <span className="dq-peak-delta dq-peak-delta--save">{t('peak.saving', { amount: fmt(shiftSaving) })}</span>
-          </div>
+          <div className="dq-stat-value dq-stat-value--ok">{t('peak.saving', { amount: fmt(shiftSaving) })}</div>
         </div>
       </div>
+      <p className="dq-peak-foot">{t('peak.basis', { total: fmt(split.offPeakEraCost) })}</p>
     </div>
   )
 }
@@ -959,6 +1160,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
   const [usageUpdatedAt, setUsageUpdatedAt] = useState<number | null>(cachedUsageAt)
   const [syncState, setSyncState] = useState<SyncState>(cachedUsageAt === null ? 'syncing' : 'cached')
   const [freshnessNow, setFreshnessNow] = useState(Date.now())
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const hadDataRef = useRef(cachedBalance !== null || cachedUsage !== null)
   const [widgetOn, setWidgetOn] = useState(widgetVisibleStore.get())
   const [widgetTabIds, setWidgetTabIds] = useState<string[] | null>(widgetTabIdsStore.get())
@@ -1472,8 +1674,20 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
     ...(composerWidth !== null ? { '--dq-composer-w': `${composerWidth}px` } : {}),
   } as CSSProperties
 
+  const navSections = [
+    { key: 'balance', label: t('nav.balance') },
+    ...(props.sessionId !== undefined && props.sessionId !== '' ? [{ key: 'session', label: t('nav.session') }] : []),
+    { key: 'overview', label: t('nav.overview') },
+    { key: 'trend', label: t('nav.trend') },
+    { key: 'heatmap', label: t('nav.heatmap') },
+    { key: 'models', label: t('nav.models') },
+    { key: 'sessions', label: t('nav.sessions') },
+    { key: 'peakcache', label: t('nav.peakcache') },
+  ]
+
   return (
     <div className="dq-balance" ref={rootRef} style={composerSafeAreaStyle}>
+      <SectionNav rootRef={rootRef} label={t('nav.label')} sections={navSections} />
       <div className="dq-status-row">
         <div className="dq-status-messages">
           <span
@@ -1490,17 +1704,29 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
           {noticeText !== null && <span className="dq-warn">{noticeText}</span>}
           {errorText !== null && <span className="dq-error">{errorText}</span>}
         </div>
-        <button
-          type="button"
-          className="dq-refresh-btn"
-          title={t('status.forceRefresh')}
-          disabled={refreshing}
-          aria-busy={refreshing}
-          onClick={() => { void load(true) }}
-        >
-          <span className={`dq-refresh-icon${refreshing ? ' dq-refresh-icon--spin' : ''}`}>↻</span>
-          {refreshing ? t('status.refreshing') : t('status.refresh')}
-        </button>
+        <div className="dq-status-actions">
+          <button
+            type="button"
+            className="dq-settings-btn"
+            aria-expanded={settingsOpen}
+            aria-controls="dq-settings-panel"
+            onClick={() => setSettingsOpen(open => !open)}
+          >
+            {t('settings.title')}
+            <span className={`dq-settings-caret${settingsOpen ? ' dq-settings-caret--open' : ''}`} aria-hidden="true">▾</span>
+          </button>
+          <button
+            type="button"
+            className="dq-refresh-btn"
+            title={t('status.forceRefresh')}
+            disabled={refreshing}
+            aria-busy={refreshing}
+            onClick={() => { void load(true) }}
+          >
+            <span className={`dq-refresh-icon${refreshing ? ' dq-refresh-icon--spin' : ''}`}>↻</span>
+            {refreshing ? t('status.refreshing') : t('status.refresh')}
+          </button>
+        </div>
       </div>
 
       {balanceLow && (
@@ -1594,6 +1820,149 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
         )}
       </div>
 
+      <Collapsible open={settingsOpen}>
+        <div className="dq-settings-panel" id="dq-settings-panel" role="region" aria-label={t('settings.title')}>
+          <CardTitle>{t('settings.title')}</CardTitle>
+        <div className="dq-setting-group">
+          <div className="dq-setting-group-title">{t('settings.groupDisplay')}</div>
+          <label className="dq-toggle">
+            <input type="checkbox" checked={widgetOn} onChange={toggle} />
+            <span>{t('settings.widget')}</span>
+          </label>
+          <div className="dq-toggle-hint">{t('settings.widgetHint')}</div>
+          <div className="dq-setting dq-setting--tabs">
+            <div className="dq-setting-label" id="dq-widget-tabs-label">{t('settings.widgetTabs')}</div>
+            <div className="dq-setting-control dq-widget-tabs" role="group" aria-labelledby="dq-widget-tabs-label">
+              <div className="dq-widget-tab-list">
+                {widgetTabs.map(tab => (
+                  <label className="dq-widget-tab" key={tab.id}>
+                    <input
+                      type="checkbox"
+                      checked={widgetTabIds === null || widgetTabIds.includes(tab.id)}
+                      onChange={() => toggleWidgetTab(tab.id)}
+                    />
+                    <span>{tab.label}</span>
+                  </label>
+                ))}
+              </div>
+              <span className="dq-setting-hint">
+                {widgetTabs.length === 0 ? t('settings.widgetTabsEmpty') : t('settings.widgetTabsHint')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="dq-setting-group">
+          <div className="dq-setting-group-title">{t('settings.groupAlerts')}</div>
+          <div className="dq-setting">
+            <label className="dq-setting-label" htmlFor="dq-low-balance">{t('settings.lowBalance')}</label>
+            <div className="dq-setting-control">
+              <input
+                id="dq-low-balance"
+                className="dq-number"
+                type="number"
+                min={0}
+                step={1}
+                value={lowBalance}
+                onChange={e => changeLowBalance(Math.max(0, Number(e.target.value) || 0))}
+              />
+              <span className="dq-setting-hint">
+                {lowBalance > 0
+                  ? t('settings.lowBalanceOn', { amount: fmt(lowBalance), currency: primary?.currency ?? 'CNY' })
+                  : t('settings.lowBalanceOff')}
+              </span>
+            </div>
+          </div>
+          <div className="dq-setting">
+            <label className="dq-setting-label" htmlFor="dq-monthly-budget">{t('settings.monthlyBudget')}</label>
+            <div className="dq-setting-control">
+              <input
+                ref={budgetInputRef}
+                id="dq-monthly-budget"
+                className="dq-number"
+                type="number"
+                min={0}
+                step={10}
+                value={monthlyBudget}
+                aria-describedby="dq-monthly-budget-hint"
+                onChange={e => changeMonthlyBudget(Math.max(0, Number(e.target.value) || 0))}
+              />
+              <span id="dq-monthly-budget-hint" className="dq-setting-hint">
+                {monthlyBudget > 0
+                  ? t('settings.monthlyBudgetOn', { amount: fmt(monthlyBudget) })
+                  : t('settings.monthlyBudgetOff')}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="dq-setting-group">
+          <div className="dq-setting-group-title">{t('settings.groupLayout')}</div>
+          <div className="dq-setting">
+            <label className="dq-setting-label" htmlFor="dq-sidebar-entry">{t('settings.sidebarEntry')}</label>
+            <div className="dq-setting-control">
+              <select
+                id="dq-sidebar-entry"
+                className="dq-select"
+                value={sidebarEntry}
+                onChange={e => changeSidebarEntry(e.target.value as SidebarEntryPlacement)}
+              >
+                <option value="off">{t('settings.sidebarEntryOff')}</option>
+                <option value="top">{t('settings.sidebarEntryTop')}</option>
+                <option value="bottom">{t('settings.sidebarEntryBottom')}</option>
+              </select>
+              <span className="dq-setting-hint">{t('settings.sidebarEntryHint')}</span>
+            </div>
+          </div>
+          <div className="dq-setting">
+            <div className="dq-setting-label" id="dq-tab-order-label">{t('settings.tabPosition')}</div>
+            <div className="dq-setting-control">
+              <div
+                className="dq-tab-order"
+                role="group"
+                aria-labelledby="dq-tab-order-label"
+                aria-describedby="dq-tab-order-hint"
+                onDragOver={onOrderDragOver}
+                onDrop={onOrderDrop}
+              >
+                {viewTabs.map((tab, index) => {
+                  const current = tab.id === 'balance'
+                  const dropTarget = tabDragging && !current && tabDropTarget === index
+                  return (
+                    <span
+                      key={tab.id}
+                      className={`dq-tab-chip${current ? ' dq-tab-chip--current' : ''}${current && tabDragging ? ' dq-tab-chip--dragging' : ''}${dropTarget ? ' dq-tab-chip--drop-target' : ''}`}
+                      draggable={current}
+                      tabIndex={current ? 0 : undefined}
+                      role={current ? 'button' : undefined}
+                      aria-label={current ? t('settings.tabDragAria') : undefined}
+                      onDragStart={current ? onQuotaTabDragStart : undefined}
+                      onDragEnd={current ? endTabDrag : undefined}
+                      onDragOver={event => onChipDragOver(event, index)}
+                      onDrop={event => onChipDrop(event, index)}
+                      onKeyDown={current ? onQuotaTabKeyDown : undefined}
+                    >
+                      {tab.label}
+                    </span>
+                  )
+                })}
+              </div>
+              <span id="dq-tab-order-hint" className="dq-setting-hint">{t('settings.tabPositionHint')}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="dq-setting-group">
+          <div className="dq-setting-group-title">{t('links.title')}</div>
+          <div className="dq-links">
+            <Link href="https://platform.deepseek.com/usage">{t('links.usage')}</Link>
+            <Link href="https://platform.deepseek.com/api_keys">{t('links.apiKey')}</Link>
+            <Link href="https://status.deepseek.com">{t('links.status')}</Link>
+          </div>
+        </div>
+        </div>
+      </Collapsible>
+
       {props.sessionId !== undefined && props.sessionId !== '' && (
         <div className="dq-card dq-card--primary">
           <CardTitle caption={t('common.estimated')}>{t('sessionUsage.title')}</CardTitle>
@@ -1636,7 +2005,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
           <BudgetMeter
             spent={usage.summary.month.cost}
             budget={monthlyBudget}
-            onConfigure={() => budgetInputRef.current?.focus()}
+            onConfigure={() => { setSettingsOpen(true); window.setTimeout(() => budgetInputRef.current?.focus(), 80) }}
           />
         )}
         {usage !== null && <PricingNote pricing={usage.pricing} />}
@@ -1824,133 +2193,6 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
           ) : (
             <div className="dq-empty">{t('cache.empty')}</div>
           )}
-        </div>
-      </div>
-
-      <div className="dq-card">
-        <CardTitle>{t('settings.title')}</CardTitle>
-        <div className="dq-links-title">{t('links.title')}</div>
-        <div className="dq-links">
-          <Link href="https://platform.deepseek.com/usage">{t('links.usage')}</Link>
-          <Link href="https://platform.deepseek.com/api_keys">{t('links.apiKey')}</Link>
-          <Link href="https://status.deepseek.com">{t('links.status')}</Link>
-        </div>
-        <label className="dq-toggle">
-          <input type="checkbox" checked={widgetOn} onChange={toggle} />
-          <span>{t('settings.widget')}</span>
-        </label>
-        <div className="dq-toggle-hint">{t('settings.widgetHint')}</div>
-        <div className="dq-setting dq-setting--tabs">
-          <div className="dq-setting-label" id="dq-widget-tabs-label">{t('settings.widgetTabs')}</div>
-          <div className="dq-setting-control dq-widget-tabs" role="group" aria-labelledby="dq-widget-tabs-label">
-            <div className="dq-widget-tab-list">
-              {widgetTabs.map(tab => (
-                <label className="dq-widget-tab" key={tab.id}>
-                  <input
-                    type="checkbox"
-                    checked={widgetTabIds === null || widgetTabIds.includes(tab.id)}
-                    onChange={() => toggleWidgetTab(tab.id)}
-                  />
-                  <span>{tab.label}</span>
-                </label>
-              ))}
-            </div>
-            <span className="dq-setting-hint">
-              {widgetTabs.length === 0 ? t('settings.widgetTabsEmpty') : t('settings.widgetTabsHint')}
-            </span>
-          </div>
-        </div>
-        <div className="dq-setting">
-          <label className="dq-setting-label" htmlFor="dq-low-balance">{t('settings.lowBalance')}</label>
-          <div className="dq-setting-control">
-            <input
-              id="dq-low-balance"
-              className="dq-number"
-              type="number"
-              min={0}
-              step={1}
-              value={lowBalance}
-              onChange={e => changeLowBalance(Math.max(0, Number(e.target.value) || 0))}
-            />
-            <span className="dq-setting-hint">
-              {lowBalance > 0
-                ? t('settings.lowBalanceOn', { amount: fmt(lowBalance), currency: primary?.currency ?? 'CNY' })
-                : t('settings.lowBalanceOff')}
-            </span>
-          </div>
-        </div>
-        <div className="dq-setting">
-          <label className="dq-setting-label" htmlFor="dq-monthly-budget">{t('settings.monthlyBudget')}</label>
-          <div className="dq-setting-control">
-            <input
-              ref={budgetInputRef}
-              id="dq-monthly-budget"
-              className="dq-number"
-              type="number"
-              min={0}
-              step={10}
-              value={monthlyBudget}
-              aria-describedby="dq-monthly-budget-hint"
-              onChange={e => changeMonthlyBudget(Math.max(0, Number(e.target.value) || 0))}
-            />
-            <span id="dq-monthly-budget-hint" className="dq-setting-hint">
-              {monthlyBudget > 0
-                ? t('settings.monthlyBudgetOn', { amount: fmt(monthlyBudget) })
-                : t('settings.monthlyBudgetOff')}
-            </span>
-          </div>
-        </div>
-        <div className="dq-setting">
-          <label className="dq-setting-label" htmlFor="dq-sidebar-entry">{t('settings.sidebarEntry')}</label>
-          <div className="dq-setting-control">
-            <select
-              id="dq-sidebar-entry"
-              className="dq-select"
-              value={sidebarEntry}
-              onChange={e => changeSidebarEntry(e.target.value as SidebarEntryPlacement)}
-            >
-              <option value="off">{t('settings.sidebarEntryOff')}</option>
-              <option value="top">{t('settings.sidebarEntryTop')}</option>
-              <option value="bottom">{t('settings.sidebarEntryBottom')}</option>
-            </select>
-            <span className="dq-setting-hint">{t('settings.sidebarEntryHint')}</span>
-          </div>
-        </div>
-        <div className="dq-setting">
-          <div className="dq-setting-label" id="dq-tab-order-label">{t('settings.tabPosition')}</div>
-          <div className="dq-setting-control">
-            <div
-              className="dq-tab-order"
-              role="group"
-              aria-labelledby="dq-tab-order-label"
-              aria-describedby="dq-tab-order-hint"
-              onDragOver={onOrderDragOver}
-              onDrop={onOrderDrop}
-            >
-              {viewTabs.map((tab, index) => {
-                const current = tab.id === 'balance'
-                const dropTarget = tabDragging && !current && tabDropTarget === index
-                return (
-                  <span
-                    key={tab.id}
-                    className={`dq-tab-chip${current ? ' dq-tab-chip--current' : ''}${current && tabDragging ? ' dq-tab-chip--dragging' : ''}${dropTarget ? ' dq-tab-chip--drop-target' : ''}`}
-                    draggable={current}
-                    tabIndex={current ? 0 : undefined}
-                    role={current ? 'button' : undefined}
-                    aria-label={current ? t('settings.tabDragAria') : undefined}
-                    onDragStart={current ? onQuotaTabDragStart : undefined}
-                    onDragEnd={current ? endTabDrag : undefined}
-                    onDragOver={event => onChipDragOver(event, index)}
-                    onDrop={event => onChipDrop(event, index)}
-                    onKeyDown={current ? onQuotaTabKeyDown : undefined}
-                  >
-                    {tab.label}
-                  </span>
-                )
-              })}
-            </div>
-            <span id="dq-tab-order-hint" className="dq-setting-hint">{t('settings.tabPositionHint')}</span>
-          </div>
         </div>
       </div>
 
