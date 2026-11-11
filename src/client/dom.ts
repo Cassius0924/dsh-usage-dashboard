@@ -51,11 +51,17 @@ export function getShellFrame(node: HTMLElement | null): HTMLElement | null {
   return (overlay?.parentElement as HTMLElement | null) ?? null
 }
 
-/** The composer's laid-out element (the seat that reserves its space, not the
- *  0×0 slot wrapper), or null if the slot is not present in the current DOM
- *  (host markup changed, or mid-navigation). Callers that only need the box
- *  can call `.getBoundingClientRect()`; callers that want to observe size
- *  changes (e.g. `ResizeObserver`) need the element itself.
+/** The composer's laid-out box — the seat that reserves the composer's space,
+ *  or null if the slot is not present in the current DOM (host markup changed,
+ *  no session open, or mid-navigation). Callers that only need the box can
+ *  call `.getBoundingClientRect()`; callers that want to observe size changes
+ *  (e.g. `ResizeObserver`) need the element itself.
+ *
+ *  Read `conversation.composer`, not the `.dock` sub-slot: the dock anchor
+ *  renders *inside* the composer card, and its nearest laid-out ancestor is a
+ *  26px toolbar row (DSH 0.2.1), so measuring it reports a box that is both
+ *  far too short and ~100px below the composer's real top — the floating
+ *  widget then parks itself over the Send button instead of above it.
  *
  *  `frame` may be null: the floating widget lives inside the shell overlay
  *  subtree, but the dashboard's plugin root is mounted in the conversation
@@ -63,10 +69,9 @@ export function getShellFrame(node: HTMLElement | null): HTMLElement | null {
  *  back to a document-wide lookup — the composer is unique in the active
  *  shell, so this cannot hit an ambiguous element. */
 export function getComposerElement(frame: HTMLElement | null): HTMLElement | null {
-  if (frame === null) {
-    return slotElement(document.documentElement, 'conversation.composer.dock', 'ancestor')
-  }
-  return slotElement(frame, 'conversation.composer.dock', 'ancestor')
+  const root = frame ?? document.documentElement
+  return slotElement(root, 'conversation.composer', 'ancestor')
+    ?? slotElement(root, 'conversation.composer.dock', 'ancestor')
 }
 
 /**

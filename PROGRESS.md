@@ -99,6 +99,18 @@
 
 ## 已完成（续）
 
+- （轮次 61）`fix(widget)`: 悬浮额度窗在窄窗口盖住输入框 Send 按钮（issue #4）。
+  - 根因：`getComposerElement()` 从 `conversation.composer.dock` 槽位向上找「第一个有高度的祖先」，宿主 0.2.1 里
+    该锚点渲染在输入卡内部，最近的已布局祖先是 26px 高的工具栏行（`.mk7YQa_dock`，770–796），不是整块输入区
+    （672–800）。于是避让只把悬浮窗抬到 y=770，仍压在 Send（728–762）与模型名上；窗口 ≤1440px 时卡片右下角
+    与输入框右下角重合。
+  - 改法：改读 `conversation.composer` 槽位的已布局祖先（= 保留输入区空间的 seat，128px 高），`.dock` 仅作兜底；
+    并且只在输入框贴底（占下半屏）时才避让——无会话的空态把同一个输入框居中在窗格中部，跟着升会飘到半空。
+  - 附带修好：额度页窄屏底部安全区（同一函数）之前量到 26px，实为 128px，≤620px 时内容被输入框盖住一截。
+  - Verify：75/75 单测、typecheck、build 全绿；线上 3080 Playwright 实测 1280×800 / 1024×660 / 1600×1000 三档
+    卡片与 composer 交集 0、与 Send 交集 0，1280 下 `elementFromPoint(Send 中心)` 命中按钮本身；无会话空态卡片
+    仍在右下角（643–784）未飘空。
+
 - （轮次 60）`docs(readme)`: README 截图全部按当前 UI 重拍（用户：「把README的图片改一下，UI有改版，得重新截了」）。
   - 重拍 16 张：hero / widget / widget-low / balance / overview / peak / cache / models / sessions / charts /
     heatmap / vision / alert / top-up / breaker / breaker-states。数据状态：hero、widget、balance 用正常余额

@@ -27,12 +27,11 @@ declare const __PLUGIN_LABEL__: string
 
 /** Fallback composer height for the narrow-screen bottom safe area, used only
  *  until the real measurement below lands (or if the host markup ever stops
- *  exposing the `conversation.composer.dock` slot). DSH has no `--dsw-*`
- *  variable for composer height — this number is not a guess: it is the
- *  measured `[data-slot="conversation.composer.dock"]` seat height on a live
- *  DSH instance at 620 / 480 / 390px viewports (126px, stable across all
- *  three; see LEARNINGS.md). Kept in sync with the small margin added in
- *  styles.ts's `.dq-balance` narrow media query. */
+ *  exposing the `conversation.composer` slot). DSH has no `--dsw-*` variable
+ *  for composer height — this number is not a guess: it is the measured
+ *  composer seat height on a live DSH instance at 620 / 480 / 390px viewports
+ *  (126px, stable across all three; see LEARNINGS.md). Kept in sync with the
+ *  small margin added in styles.ts's `.dq-balance` narrow media query. */
 const COMPOSER_FALLBACK_PX = 126
 
 /** One shimmering placeholder block, sized by the caller. */
@@ -1217,7 +1216,7 @@ export function BalanceDashboard(props: { sessionId?: string; views: Conversatio
 
   // Narrow viewports only: keep the last card scrollable clear of the host's
   // fixed composer, which otherwise overlaps the bottom of a long dashboard
-  // (see LEARNINGS.md). Reuses the same `conversation.composer.dock` slot
+  // (see LEARNINGS.md). Reuses the same `conversation.composer` seat lookup
   // widget.tsx already excludes from its own drag bounds, so both readings of
   // "where is the composer" stay in sync. Desktop layout never reads the
   // height — the CSS variable is only consumed inside the 620px media query;

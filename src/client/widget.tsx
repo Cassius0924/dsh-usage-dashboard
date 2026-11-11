@@ -19,7 +19,7 @@ import {
 } from './api.ts'
 import { fmt } from './charts.tsx'
 import type { BalanceData, SessionUsageData, UsageData } from '../contract.ts'
-import { getActiveConversationViewId, getMainColumn, getShellFrame, slotBox } from './dom.ts'
+import { getActiveConversationViewId, getComposerElement, getMainColumn, getShellFrame, slotBox } from './dom.ts'
 import { localizeApiError, useI18n } from './i18n.tsx'
 import { fmtTurnCost } from './message-cost.tsx'
 import { isBoolean, loadPref, savePref } from './prefs.ts'
@@ -92,8 +92,11 @@ function getBounds(node: HTMLElement | null): Bounds {
   if (headerRect !== null && headerRect.bottom > top && headerRect.bottom < bottom - MIN_REGION_HEIGHT) {
     top = headerRect.bottom
   }
-  const composerRect = slotBox(frame, 'conversation.composer.dock', 'ancestor')
-  if (composerRect !== null && composerRect.top < bottom && composerRect.top > top + MIN_REGION_HEIGHT) {
+  // Only a composer docked along the bottom edge competes with the widget's
+  // corner. The no-session screen renders the same composer centred in the
+  // pane, and dodging that would park the widget in mid-air.
+  const composerRect = getComposerElement(frame)?.getBoundingClientRect() ?? null
+  if (composerRect !== null && composerRect.top < bottom && composerRect.top > top + (bottom - top) / 2) {
     bottom = composerRect.top
   }
   return { left, top, right, bottom }
