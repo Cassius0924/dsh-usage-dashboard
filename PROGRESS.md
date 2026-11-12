@@ -1678,6 +1678,14 @@
   证据：接口实测 6 个会话、标题 6/6 全部解析成功、按费用降序、Top-6 之和 = totals.cost（100%）；
   界面显示最贵会话「写一个查看DeepSeek额度的dsh插件 ¥11.38 · 占 77.8%」；控制台 0 错误。
 
+## 发布（2026-11-12）
+
+- 已发布 `@cassius0924/dsh-usage-dashboard@0.9.2`：Release `v0.9.2` 触发 Actions `43136587058` success，
+  registry `dist-tags.latest` 已轮询到 0.9.2。
+- 内容 = 轮次 62（issue #4 遗留项：`z-index` 2147483000 → 1，宿主 overlay 层的 stacking context 让原值形同虚设）。
+- issue #4 已重新打开并回复对照实测（overlay 层与宿主 portal root 两层 stacking context、注入 `z-index:1400`
+  子元素的对照），请对方复测后关单。
+
 ## 发布（2026-11-11）
 
 - `@cassius0924/dsh-usage-dashboard@0.9.1`：修复 issue #4（悬浮窗压住 Send 按钮）。Release `v0.9.1` 触发 Publish workflow，
