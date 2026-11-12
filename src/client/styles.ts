@@ -1,7 +1,10 @@
 /** All plugin styles in one sheet, injected once at client load. */
 
 export const css = `
-.dsh-quota-root{-webkit-text-size-adjust:100%;text-size-adjust:100%;position:absolute;right:16px;bottom:16px;z-index:2147483000;pointer-events:auto;opacity:1;visibility:visible;font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif);font-size:13px;line-height:1.45;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary,#1f2328);--dq-text-success:#1a7f37;--dq-text-success:color-mix(in oklab,var(--dsw-alias-state-success-primary,#2da44e) 52%,var(--dsw-alias-label-primary,#1f2328) 48%);--dq-text-warn:#9a6700;--dq-text-warn:color-mix(in oklab,var(--dsw-alias-state-warn-primary,#bf8700) 52%,var(--dsw-alias-label-primary,#1f2328) 48%);transition:left .28s cubic-bezier(.22,1,.36,1),top .28s cubic-bezier(.22,1,.36,1),opacity .16s ease-out,visibility 0s linear}
+/* The widget is injected into the host's overlay layer (z-index:20), which is a
+   stacking context — its own z-index only orders it among that layer's children.
+   1 = above the host's in-layer content, never above a modal. */
+.dsh-quota-root{-webkit-text-size-adjust:100%;text-size-adjust:100%;position:absolute;right:16px;bottom:16px;z-index:1;pointer-events:auto;opacity:1;visibility:visible;font-family:var(--dsw-font-family,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei","Helvetica Neue",Helvetica,Arial,sans-serif);font-size:13px;line-height:1.45;font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-primary,#1f2328);--dq-text-success:#1a7f37;--dq-text-success:color-mix(in oklab,var(--dsw-alias-state-success-primary,#2da44e) 52%,var(--dsw-alias-label-primary,#1f2328) 48%);--dq-text-warn:#9a6700;--dq-text-warn:color-mix(in oklab,var(--dsw-alias-state-warn-primary,#bf8700) 52%,var(--dsw-alias-label-primary,#1f2328) 48%);transition:left .28s cubic-bezier(.22,1,.36,1),top .28s cubic-bezier(.22,1,.36,1),opacity .16s ease-out,visibility 0s linear}
 .dsh-quota-root.dsh-quota-root--hidden{opacity:0;visibility:hidden;pointer-events:none;transition:opacity .14s ease-out,visibility 0s linear .14s}
 .dsh-quota-root.dsh-quota-dragging{transition:none}
 .dsh-quota-card,.dsh-quota-card *{box-sizing:border-box}

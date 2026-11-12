@@ -99,6 +99,15 @@
 
 ## 已完成（续）
 
+- （轮次 62）`fix(widget)`: 悬浮窗 `z-index: 2147483000` 收为 `1`（issue #4 的遗留项——报告者指出那个值读起来像「压过一切」，实际被宿主的 stacking context 关死）。
+  - 实测确认（线上 3080 注入探针）：卡片所在的宿主 overlay 层 `z-index:20` 自成 stacking context，卡片的 2147483000
+    只在该层内排序；宿主 portal root（position:fixed、z-index:auto）同样自成 context，往里追加 `z-index:1400` 的子元素
+    仍被卡片盖住 → 卡片能压过什么、压不过什么跟这个数字无关，真实弹窗在更高层时才会盖在卡片上（与报告者实测一致）。
+  - 改法：值改成 `1`（层内高于宿主内容，不再冒充能压过弹窗），并在样式表里写明这样写的理由。
+  - Verify：75/75 单测、typecheck、build 全绿；Playwright 三档（1600×1000 / 1280×800 / 1024×660）打开会话、composer 贴底：
+    computed `z-index`=1，卡片与 Send 交集 0，Send 中心 `elementFromPoint` 命中按钮，卡片中心命中卡片自身；
+    无新增 console 错误（仅有宿主的 `/api/changes.summary` 404 与 dsh-medals 插件 503，与本插件无关）。
+
 - （轮次 61）`fix(widget)`: 悬浮额度窗在窄窗口盖住输入框 Send 按钮（issue #4）。
   - 根因：`getComposerElement()` 从 `conversation.composer.dock` 槽位向上找「第一个有高度的祖先」，宿主 0.2.1 里
     该锚点渲染在输入卡内部，最近的已布局祖先是 26px 高的工具栏行（`.mk7YQa_dock`，770–796），不是整块输入区
@@ -1668,6 +1677,13 @@
 - （轮次 16）`feat(dashboard)`: 会话成本排行。
   证据：接口实测 6 个会话、标题 6/6 全部解析成功、按费用降序、Top-6 之和 = totals.cost（100%）；
   界面显示最贵会话「写一个查看DeepSeek额度的dsh插件 ¥11.38 · 占 77.8%」；控制台 0 错误。
+
+## 发布（2026-11-11）
+
+- `@cassius0924/dsh-usage-dashboard@0.9.1`：修复 issue #4（悬浮窗压住 Send 按钮）。Release `v0.9.1` 触发 Publish workflow，
+  日志 `+ @cassius0924/dsh-usage-dashboard@0.9.1`；registry `dist-tags.latest` 已轮询到 0.9.1。
+- 已在 issue #4 回复根因（`conversation.composer.dock` 的最近已布局祖先是 26px 工具栏行，不是输入区 seat）、改动与升级命令，
+  请对方复测后关单。
 
 ## 发布（2026-10-23）
 
